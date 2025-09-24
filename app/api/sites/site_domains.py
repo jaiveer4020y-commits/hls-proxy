@@ -2,7 +2,7 @@
 
 SITE_DOMAINS = {
     'multimovies': 'https://multimovies.email/',
-    'gdmirrorbot': 'https://pro.gtxgamer.site/',
+    'gdmirrorbot': 'https://gdmirrorbot.nl/',
     'streamwish': 'https://swiftplayers.com',
     'streamp2p': 'https://multimovies.p2pplay.pro'
 }
