@@ -20,7 +20,7 @@ from django.contrib import admin
 from django.urls import path, include
 from app.views import site_paused
 
-PAUSE_SITE = True  # Set to False when you want to unpause
+PAUSE_SITE = False  # Set to False when you want to unpause
 
 if PAUSE_SITE:
     # All routes temporarily paused
