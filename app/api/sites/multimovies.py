@@ -39,11 +39,16 @@ def real_extract(url, request):
         "status": "error",
         "status_code": 400,
         "error": None,
-        "servers": []
+        "servers": [],
+        "debug": []
     }
 
     if not url:
-        response_data["error"] = "No URL provided to extractor."
+
+        response_data["error"] = (
+            "No URL provided to extractor."
+        )
+
         return response_data
 
     try:
@@ -63,7 +68,15 @@ def real_extract(url, request):
                 allow_redirects=True
             )
 
-            default_domain = u.get_domain(init_res.url)
+            default_domain = u.get_domain(
+                init_res.url
+            )
+
+            response_data["debug"].append({
+                "step": "resolve_domain",
+                "status": "success",
+                "default_domain": default_domain
+            })
 
         except Exception as e:
 
@@ -74,10 +87,13 @@ def real_extract(url, request):
             return response_data
 
         # =================================================
-        # Target URL
+        # Fetch page
         # =================================================
 
-        target_url = url.replace(domain, default_domain)
+        target_url = url.replace(
+            domain,
+            default_domain
+        )
 
         page_headers = headers.copy()
 
@@ -94,17 +110,30 @@ def real_extract(url, request):
 
         response.raise_for_status()
 
+        response_data["debug"].append({
+            "step": "fetch_page",
+            "status": "success",
+            "target_url": target_url
+        })
+
         # =================================================
         # Parse HTML
         # =================================================
 
-        soup = BeautifulSoup(response.text, "html.parser")
+        soup = BeautifulSoup(
+            response.text,
+            "html.parser"
+        )
 
-        player_element = soup.select_one("#player-option-1")
+        player_element = soup.select_one(
+            "#player-option-1"
+        )
 
         # fallback selector
         if not player_element:
-            player_element = soup.select_one("[data-post]")
+            player_element = soup.select_one(
+                "[data-post]"
+            )
 
         if not player_element:
 
@@ -113,6 +142,11 @@ def real_extract(url, request):
             )
 
             return response_data
+
+        response_data["debug"].append({
+            "step": "find_player",
+            "status": "success"
+        })
 
         # =================================================
         # Extract player data
@@ -132,6 +166,14 @@ def real_extract(url, request):
             )
 
             return response_data
+
+        response_data["debug"].append({
+            "step": "extract_attributes",
+            "status": "success",
+            "post": post_id,
+            "type": data_type,
+            "nume": data_nume
+        })
 
         # =================================================
         # AJAX POST
@@ -166,10 +208,6 @@ def real_extract(url, request):
             timeout=20
         )
 
-        # =================================================
-        # Validate response
-        # =================================================
-
         content_type = post_res.headers.get(
             "Content-Type",
             ""
@@ -186,6 +224,7 @@ def real_extract(url, request):
             return response_data
 
         try:
+
             response_json = post_res.json()
 
         except Exception:
@@ -195,6 +234,12 @@ def real_extract(url, request):
             )
 
             return response_data
+
+        response_data["debug"].append({
+            "step": "ajax_response",
+            "status": "success",
+            "response_json": response_json
+        })
 
         if not response_json:
 
@@ -218,6 +263,12 @@ def real_extract(url, request):
 
             return response_data
 
+        response_data["debug"].append({
+            "step": "embed_url",
+            "status": "success",
+            "embed_url": embed_url
+        })
+
         media_urls = []
 
         # =================================================
@@ -230,6 +281,11 @@ def real_extract(url, request):
                 embed_url,
                 request
             )
+
+            response_data["debug"].append({
+                "step": "gdmirrorbot",
+                "result": embed_data
+            })
 
             if not isinstance(embed_data, dict):
 
@@ -252,6 +308,11 @@ def real_extract(url, request):
                 "embed_urls",
                 {}
             )
+
+            response_data["debug"].append({
+                "step": "embed_urls",
+                "embed_urls": embed_urls
+            })
 
             # =============================================
             # Loop providers
@@ -287,11 +348,10 @@ def real_extract(url, request):
                             request
                         )
 
-                        if (
-                            isinstance(sw_res, dict)
-                            and sw_res.get("status") == "success"
-                        ):
-                            media_urls.append(sw_res)
+                        media_urls.append({
+                            "provider": key,
+                            "result": sw_res
+                        })
 
                     # =====================================
                     # StreamP2P
@@ -304,14 +364,18 @@ def real_extract(url, request):
                             request
                         )
 
-                        if (
-                            isinstance(sp2p_res, dict)
-                            and sp2p_res.get("status") == "success"
-                        ):
-                            media_urls.append(sp2p_res)
+                        media_urls.append({
+                            "provider": key,
+                            "result": sp2p_res
+                        })
 
-                except Exception:
-                    continue
+                except Exception as e:
+
+                    media_urls.append({
+                        "provider": key,
+                        "status": "error",
+                        "error": str(e)
+                    })
 
         # =================================================
         # HANDLE DTSHCODE
@@ -335,11 +399,10 @@ def real_extract(url, request):
                     request
                 )
 
-                if (
-                    isinstance(sw_res, dict)
-                    and sw_res.get("status") == "success"
-                ):
-                    media_urls.append(sw_res)
+                media_urls.append({
+                    "provider": "streamwish",
+                    "result": sw_res
+                })
 
             else:
 
@@ -355,10 +418,18 @@ def real_extract(url, request):
 
         if not media_urls:
 
-            response_data["error"] = (
-                "Extraction finished but no playable "
-                "media URLs were found."
-            )
+            response_data["error"] = {
+                "message": (
+                    "No playable media URLs found"
+                ),
+                "embed_url": embed_url,
+                "response_json": response_json,
+                "embed_data": (
+                    embed_data
+                    if 'embed_data' in locals()
+                    else None
+                )
+            }
 
             return response_data
 
@@ -370,10 +441,7 @@ def real_extract(url, request):
             "status": "success",
             "status_code": 200,
             "error": None,
-            "servers": u.proxify(
-                media_urls,
-                request
-            )
+            "servers": media_urls
         })
 
     # =====================================================
