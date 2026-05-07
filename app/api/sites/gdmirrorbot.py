@@ -37,48 +37,170 @@ PROXY_API = "https://script.google.com/macros/s/AKfycbz54yydg-bHZPUB9URu9WxcAQmt
 
 def real_extract(url, request):
     """Extracts the streaming URL from the given URL."""
+
     response_data = {
         'status': 'error',
         'status_code': 400,
         'error': None,
-        'embed_urls': None
+        'embed_urls': {},
+        'debug_json_data': None,
+        'debug_iframe_urls': None
     }
-    
+
     try:
+
         iframe_urls = {}
+
+        # =================================================
+        # Extract SID
+        # =================================================
+
         sid = urlparse(url).path.rstrip("/").split("/")[-1]
-        
+
+        # =================================================
         # Fetch streaming data
-        post_response = session.get(f"{PROXY_API}?type=post&post_sid={sid}&url=https://pro.iqsmartgames.com/embedhelper.php", headers=headers)
+        # =================================================
+
+        api_url = (
+            f"{PROXY_API}"
+            f"?type=post"
+            f"&post_sid={sid}"
+            f"&url=https://pro.iqsmartgames.com/embedhelper.php"
+        )
+
+        post_response = session.get(
+            api_url,
+            headers=headers,
+            timeout=20
+        )
+
         post_response.raise_for_status()
 
+        # =================================================
+        # Parse API JSON
+        # =================================================
+
         post_json = post_response.json()
+
         if 'mresult' not in post_json:
-            response_data['error'] = 'Invalid response structure'
+
+            response_data['error'] = (
+                'Invalid response structure: mresult missing'
+            )
+
+            response_data['debug_json_data'] = post_json
+
             return response_data
 
-        # Decode the base64 data
-        decoded_data = base64.b64decode(post_json['mresult']).decode("utf-8")
+        # =================================================
+        # Decode base64
+        # =================================================
+
+        decoded_data = base64.b64decode(
+            post_json['mresult']
+        ).decode("utf-8")
+
+        # =================================================
+        # Parse decoded JSON
+        # =================================================
+
         json_data = json.loads(decoded_data)
 
-        if 'smwh' in json_data:
-            iframe_urls['streamwish'] = f"{streamwish_domain}/e/{json_data['smwh']}"
-        if 'strmp2' in json_data:
-            iframe_urls['streamp2p'] = f"{streamp2p_domain}/#{json_data['strmp2']}"
-        
+        response_data['debug_json_data'] = json_data
+
+        # =================================================
+        # Auto detect provider keys
+        # =================================================
+
+        for key, value in json_data.items():
+
+            if not value:
+                continue
+
+            lower_key = key.lower()
+
+            # =============================================
+            # STREAMWISH / FILELIONS / DWISH
+            # =============================================
+
+            if any(
+                x in lower_key
+                for x in [
+                    'smwh',
+                    'streamwish',
+                    'wish',
+                    'filelions',
+                    'lion',
+                    'dwish',
+                    'sw'
+                ]
+            ):
+
+                iframe_urls[key] = (
+                    f"{streamwish_domain}/e/{value}"
+                )
+
+            # =============================================
+            # STREAMP2P
+            # =============================================
+
+            elif any(
+                x in lower_key
+                for x in [
+                    'strmp2',
+                    'p2p'
+                ]
+            ):
+
+                iframe_urls[key] = (
+                    f"{streamp2p_domain}/#{value}"
+                )
+
+        response_data['debug_iframe_urls'] = iframe_urls
+
+        # =================================================
+        # No providers found
+        # =================================================
+
+        if not iframe_urls:
+
+            response_data['error'] = (
+                'No supported providers found in decoded JSON'
+            )
+
+            return response_data
+
+        # =================================================
         # Success
+        # =================================================
+
         response_data['status'] = 'success'
         response_data['status_code'] = 200
         response_data['error'] = None
         response_data['embed_urls'] = iframe_urls
 
     except requests.exceptions.RequestException as e:
-        response_data['error'] = f'HTTP request failed: {str(e)}'
-    except json.JSONDecodeError:
-        response_data['error'] = 'Failed to parse JSON response'
-    except base64.binascii.Error:
-        response_data['error'] = 'Failed to decode base64 response'
-    except Exception as e:
-        response_data['error'] = f'[GDMirror] Unexpected error: {str(e)}'
 
-    return response_data  # Return a dictionary response
+        response_data['error'] = (
+            f'HTTP request failed: {str(e)}'
+        )
+
+    except json.JSONDecodeError:
+
+        response_data['error'] = (
+            'Failed to parse JSON response'
+        )
+
+    except base64.binascii.Error:
+
+        response_data['error'] = (
+            'Failed to decode base64 response'
+        )
+
+    except Exception as e:
+
+        response_data['error'] = (
+            f'[GDMirror] Unexpected error: {str(e)}'
+        )
+
+    return response_data
