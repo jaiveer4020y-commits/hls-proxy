@@ -323,12 +323,12 @@ def real_extract(url, request):
                 if not value:
                     continue
 
+                lower_key = key.lower()
+
                 try:
 
-                    lower_key = key.lower()
-
                     # =====================================
-                    # Streamwish / Filelions
+                    # STREAMWISH / FILELIONS
                     # =====================================
 
                     if any(
@@ -354,7 +354,7 @@ def real_extract(url, request):
                         })
 
                     # =====================================
-                    # StreamP2P
+                    # STREAMP2P
                     # =====================================
 
                     elif "p2p" in lower_key:
@@ -413,7 +413,7 @@ def real_extract(url, request):
                 return response_data
 
         # =================================================
-        # FINAL CHECK
+        # NO RESULTS
         # =================================================
 
         if not media_urls:
