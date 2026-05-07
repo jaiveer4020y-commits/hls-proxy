@@ -1,3 +1,4 @@
+import requests
 import cloudscraper
 from bs4 import BeautifulSoup
 
@@ -6,7 +7,7 @@ from . import utils as u
 
 
 # =========================================================
-# Browser-like headers
+# HEADERS
 # =========================================================
 
 headers = {
@@ -23,7 +24,7 @@ headers = {
 
 
 # =========================================================
-# Cloudflare bypass session
+# SESSION
 # =========================================================
 
 session = cloudscraper.create_scraper(
@@ -49,7 +50,7 @@ def real_extract(url, request):
     }
 
     if not url:
-        response_data["error"] = "No URL provided."
+        response_data["error"] = "No URL provided to extractor."
         return response_data
 
     try:
@@ -71,16 +72,21 @@ def real_extract(url, request):
             default_domain = u.get_domain(init_res.url)
 
         except Exception as e:
-            response_data["error"] = f"Could not resolve domain: {str(e)}"
+
+            response_data["error"] = (
+                f"Could not resolve base domain: {str(e)}"
+            )
+
             return response_data
 
         # =================================================
-        # Fetch target page
+        # Fetch page
         # =================================================
 
         target_url = url.replace(domain, default_domain)
 
         page_headers = headers.copy()
+
         page_headers.update({
             "Referer": default_domain,
             "Origin": default_domain
@@ -95,7 +101,7 @@ def real_extract(url, request):
         response.raise_for_status()
 
         # =================================================
-        # Parse page
+        # Parse HTML
         # =================================================
 
         soup = BeautifulSoup(response.text, "html.parser")
@@ -103,19 +109,18 @@ def real_extract(url, request):
         player_element = soup.select_one("#player-option-1")
 
         if not player_element:
-
-            # fallback selector
             player_element = soup.select_one("[data-post]")
 
         if not player_element:
+
             response_data["error"] = (
-                "Player element not found. "
-                "Site layout may have changed."
+                "Player element not found on page."
             )
+
             return response_data
 
         # =================================================
-        # Extract attributes
+        # Extract data attributes
         # =================================================
 
         post_id = player_element.get("data-post")
@@ -124,20 +129,23 @@ def real_extract(url, request):
 
         if not all([post_id, data_type, data_nume]):
 
-            response_data["error"] = {
-                "message": "Missing player attributes",
-                "post": post_id,
-                "type": data_type,
-                "nume": data_nume
-            }
+            response_data["error"] = (
+                f"Missing data attributes: "
+                f"post={post_id}, "
+                f"type={data_type}, "
+                f"nume={data_nume}"
+            )
 
             return response_data
 
         # =================================================
-        # AJAX Request
+        # AJAX POST
         # =================================================
 
-        ajax_url = f"{default_domain.rstrip('/')}/wp-admin/admin-ajax.php"
+        ajax_url = (
+            f"{default_domain.rstrip('/')}"
+            f"/wp-admin/admin-ajax.php"
+        )
 
         payload = {
             "action": "doo_player_ajax",
@@ -164,18 +172,21 @@ def real_extract(url, request):
         )
 
         # =================================================
-        # Validate JSON response
+        # Validate response
         # =================================================
 
-        content_type = post_res.headers.get("Content-Type", "")
+        content_type = post_res.headers.get(
+            "Content-Type",
+            ""
+        )
 
         if "application/json" not in content_type:
 
-            response_data["error"] = {
-                "message": "Expected JSON but got different content type",
-                "content_type": content_type,
-                "preview": post_res.text[:500]
-            }
+            response_data["error"] = (
+                "Site blocked request. "
+                f"Expected JSON but got {content_type}. "
+                f"Preview: {post_res.text[:150]}"
+            )
 
             return response_data
 
@@ -184,77 +195,67 @@ def real_extract(url, request):
 
         except Exception:
 
-            response_data["error"] = {
-                "message": "Invalid JSON response",
-                "preview": post_res.text[:500]
-            }
+            response_data["error"] = (
+                "Server returned invalid JSON."
+            )
 
             return response_data
 
-        # =================================================
-        # Check embed URL
-        # =================================================
+        if not response_json:
+
+            response_data["error"] = (
+                "Empty JSON response."
+            )
+
+            return response_data
 
         embed_url = response_json.get("embed_url")
 
         if not embed_url:
 
-            response_data["error"] = {
-                "message": "embed_url missing",
-                "response_json": response_json
-            }
+            response_data["error"] = (
+                "embed_url missing in AJAX response."
+            )
 
             return response_data
 
         media_urls = []
 
         # =================================================
-        # IFRAME TYPE
+        # HANDLE IFRAME TYPE
         # =================================================
 
         if response_json.get("type") == "iframe":
 
-            print("\n========== IFRAME MODE ==========")
-            print("Embed URL:", embed_url)
+            embed_data = gdmirrorbot.real_extract(
+                embed_url,
+                request
+            )
 
-            embed_data = gdmirrorbot.real_extract(embed_url, request)
-
-            print("\n========== GDMIRRORBOT ==========")
-            print(embed_data)
-
-            if not isinstance(embed_data, dict):
+            if (
+                not isinstance(embed_data, dict)
+                or embed_data.get("status") == "error"
+            ):
 
                 response_data["error"] = (
-                    "gdmirrorbot returned invalid data"
+                    "gdmirrorbot extractor failed."
                 )
 
                 return response_data
 
-            if embed_data.get("status") == "error":
-
-                response_data["error"] = {
-                    "message": "gdmirrorbot failed",
-                    "details": embed_data
-                }
-
-                return response_data
-
-            embed_urls = embed_data.get("embed_urls", {})
-
-            print("\n========== EMBED URLS ==========")
-            print(embed_urls)
+            embed_urls = embed_data.get(
+                "embed_urls",
+                {}
+            )
 
             # =============================================
-            # Auto-detect providers
+            # Auto detect providers
             # =============================================
 
             for key, value in embed_urls.items():
 
                 if not value:
                     continue
-
-                print(f"\nTrying provider: {key}")
-                print("URL:", value)
 
                 try:
 
@@ -279,9 +280,6 @@ def real_extract(url, request):
                             request
                         )
 
-                        print("\nSTREAMWISH RESULT:")
-                        print(sw_res)
-
                         if (
                             isinstance(sw_res, dict)
                             and sw_res.get("status") == "success"
@@ -299,31 +297,25 @@ def real_extract(url, request):
                             request
                         )
 
-                        print("\nSTREAMP2P RESULT:")
-                        print(sp2p_res)
-
                         if (
                             isinstance(sp2p_res, dict)
                             and sp2p_res.get("status") == "success"
                         ):
                             media_urls.append(sp2p_res)
 
-                except Exception as provider_error:
-
-                    print(
-                        f"Provider extraction failed: "
-                        f"{str(provider_error)}"
-                    )
+                except Exception:
+                    pass
 
         # =================================================
-        # DTSHCODE TYPE
+        # HANDLE DTSHCODE
         # =================================================
 
         elif response_json.get("type") == "dtshcode":
 
-            print("\n========== DTSHCODE MODE ==========")
-
-            sub_soup = BeautifulSoup(embed_url, "html.parser")
+            sub_soup = BeautifulSoup(
+                embed_url,
+                "html.parser"
+            )
 
             iframe = sub_soup.select_one("iframe")
 
@@ -331,15 +323,10 @@ def real_extract(url, request):
 
                 iframe_src = iframe["src"]
 
-                print("Iframe SRC:", iframe_src)
-
                 sw_res = streamwish.real_extract(
                     iframe_src,
                     request
                 )
-
-                print("\nSTREAMWISH RESULT:")
-                print(sw_res)
 
                 if (
                     isinstance(sw_res, dict)
@@ -350,7 +337,7 @@ def real_extract(url, request):
             else:
 
                 response_data["error"] = (
-                    "Iframe not found inside dtshcode."
+                    "Could not find iframe inside dtshcode."
                 )
 
                 return response_data
@@ -359,16 +346,12 @@ def real_extract(url, request):
         # FINAL CHECK
         # =================================================
 
-        print("\n========== FINAL MEDIA URLS ==========")
-        print(media_urls)
-
         if not media_urls:
 
-            response_data["error"] = {
-                "message": "Extraction finished but no playable media URLs were found.",
-                "embed_url": embed_url,
-                "response_json": response_json
-            }
+            response_data["error"] = (
+                "Extraction finished but no playable "
+                "media URLs were found."
+            )
 
             return response_data
 
@@ -380,10 +363,11 @@ def real_extract(url, request):
             "status": "success",
             "status_code": 200,
             "error": None,
-            "servers": u.proxify(media_urls, request)
+            "servers": u.proxify(
+                media_urls,
+                request
+            )
         })
-
-        return response_data
 
     # =====================================================
     # TIMEOUT
@@ -392,7 +376,7 @@ def real_extract(url, request):
     except requests.exceptions.Timeout:
 
         response_data["error"] = (
-            "Request timed out."
+            "The request timed out."
         )
 
     # =====================================================
