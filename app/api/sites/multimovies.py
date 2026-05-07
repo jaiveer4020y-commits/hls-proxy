@@ -1,122 +1,141 @@
 import requests
 from bs4 import BeautifulSoup
-from django.contrib.sites.shortcuts import get_current_site
 from . import streamwish, gdmirrorbot, streamp2p, site_domains
 from . import utils as u
 
-# Configuration
-default_domain = site_domains.get_domain('multimovies')
+# Updated headers to look more like a legitimate browser
 headers = {
-    'Referer': default_domain,
-    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/javascript, */*; q=0.01',
+    'X-Requested-With': 'XMLHttpRequest'
 }
 
-# Create session
 session = requests.Session()
 
 def real_extract(url, request):
-    """Extracts streaming URLs from the given video page."""
     response_data = {
         'status': 'error',
         'status_code': 400,
         'error': None,
         'servers': []
     }
-    domain = u.get_domain(url)
-    response = session.get(domain, headers=headers, allow_redirects=True)
-    default_domain = u.get_domain(response.url)
+
+    if not url:
+        response_data['error'] = "No URL provided to extractor."
+        return response_data
+
     try:
-        response = session.get(url.replace(domain, default_domain), headers=headers)
+        # 1. Resolve Domain and Initial Connection
+        domain = u.get_domain(url)
+        try:
+            init_res = session.get(domain, headers=headers, timeout=10, allow_redirects=True)
+            default_domain = u.get_domain(init_res.url)
+        except Exception as e:
+            response_data['error'] = f"Could not resolve base domain: {str(e)}"
+            return response_data
+
+        # 2. Fetch the Video Page
+        target_url = url.replace(domain, default_domain)
+        response = session.get(target_url, headers=headers, timeout=15)
         response.raise_for_status()
 
-        # Parse HTML
+        # 3. Parse HTML and find Player
         soup = BeautifulSoup(response.text, 'html.parser')
         player_element = soup.select_one("#player-option-1")
 
         if not player_element:
-            response_data['error'] = 'Player element not found'
+            response_data['error'] = "Player element (#player-option-1) not found on page. The site layout might have changed."
             return response_data
 
-        # Extract POST data attributes
+        # 4. Extract POST attributes
         post_id = player_element.get('data-post')
         data_type = player_element.get('data-type')
         data_nume = player_element.get('data-nume')
 
         if not all([post_id, data_type, data_nume]):
-            response_data['error'] = 'Missing required data attributes'
+            response_data['error'] = f"Missing data attributes: post={post_id}, type={data_type}, nume={data_nume}"
             return response_data
 
-        # Prepare request data
-        data = {
+        # 5. Execute AJAX POST Request
+        ajax_url = f"{default_domain.rstrip('/')}/wp-admin/admin-ajax.php"
+        payload = {
             'action': 'doo_player_ajax',
             'post': post_id,
             'nume': data_nume,
             'type': data_type
         }
         
-        # Send POST request
-        post_response = session.post(f"{default_domain}/wp-admin/admin-ajax.php", data=data, headers=headers)
-        post_response.raise_for_status()
+        post_headers = headers.copy()
+        post_headers['Referer'] = target_url
+        
+        post_res = session.post(ajax_url, data=payload, headers=post_headers, timeout=15)
+        
+        # --- CRITICAL ERROR DETECTION: Check if response is actually JSON ---
+        if "application/json" not in post_res.headers.get("Content-Type", ""):
+            response_data['error'] = f"Site blocked request (WAF). Expected JSON but got {post_res.headers.get('Content-Type')}. Preview: {post_res.text[:100]}"
+            return response_data
 
-        response_json = None
         try:
-            response_json = post_response.json()
+            response_json = post_res.json()
         except ValueError:
-            response_data['error'] = 'Invalid JSON returned from POST response'
+            response_data['error'] = "The server returned a response that isn't valid JSON."
             return response_data
-        if 'type' not in response_json or 'embed_url' not in response_json:
-            response_data['error'] = 'Invalid response structure'
-            return response_data
-        embed_url = response_json['embed_url']
-        extractor_response = None
 
-        # Handle different types of embeds
-        if response_json['type'] == 'iframe':
+        if not response_json or 'embed_url' not in response_json:
+            response_data['error'] = "AJAX success, but 'embed_url' is missing from the data."
+            return response_data
+
+        embed_url = response_json['embed_url']
+        media_urls = []
+
+        # 6. Handle Content Types
+        if response_json.get('type') == 'iframe':
             embed_data = gdmirrorbot.real_extract(embed_url, request)
             
-            if u.isDict(embed_data) and embed_data.get('error'):
-                response_data['error'] = embed_data['error']
+            if not u.isDict(embed_data) or embed_data.get('status') == 'error':
+                response_data['error'] = f"Sub-extractor (gdmirrorbot) failed: {embed_data.get('error', 'Unknown Error')}"
                 return response_data
 
-            if not u.isDict(embed_data) or 'embed_urls' not in embed_data:
-                response_data['error'] = 'Invalid extractor response from gdmirrorbot'
-                return response_data
-            embed_urls = embed_data['embed_urls']
-            streamwish_iframe = embed_urls.get('streamwish')
-            streamp2p_iframe = None
-            if 'streamp2p' in embed_urls:
-                streamp2p_iframe = embed_urls.get('streamp2p')
-
-            media_urls = [
-                streamwish.real_extract(streamwish_iframe, request)
-            ]
+            embed_urls = embed_data.get('embed_urls', {})
             
-            if streamp2p_iframe is not None:
-                media_urls.append(streamp2p.real_extract(streamp2p_iframe, request))
-            response_data['servers'] = u.proxify(media_urls, request)
+            # Extract specific sources
+            sw_url = embed_urls.get('streamwish')
+            if sw_url:
+                sw_res = streamwish.real_extract(sw_url, request)
+                if sw_res.get('status') == 'success': media_urls.append(sw_res)
+            
+            sp2p_url = embed_urls.get('streamp2p')
+            if sp2p_url:
+                sp2p_res = streamp2p.real_extract(sp2p_url, request)
+                if sp2p_res.get('status') == 'success': media_urls.append(sp2p_res)
 
-        elif response_json['type'] == 'dtshcode':
-            soup = BeautifulSoup(embed_url, 'html.parser')
-            iframe = soup.select_one('iframe')
-
-            if not iframe or not iframe.get('src'):
-                response_data['error'] = 'Iframe src not found'
+        elif response_json.get('type') == 'dtshcode':
+            sub_soup = BeautifulSoup(embed_url, 'html.parser')
+            iframe = sub_soup.select_one('iframe')
+            if iframe and iframe.get('src'):
+                sw_res = streamwish.real_extract(iframe['src'], request)
+                if sw_res.get('status') == 'success': media_urls.append(sw_res)
+            else:
+                response_data['error'] = "Could not find iframe inside dtshcode."
                 return response_data
-            media_urls = [
-                streamwish.real_extract(iframe['src'], request)
-            ]
-            response_data['servers'] = u.proxify(media_urls, request)
 
-        # Update response data on success
-        response_data['status'] = 'success'
-        response_data['status_code'] = 200
-        response_data['error'] = None
+        # 7. Final Verification
+        if not media_urls:
+            response_data['error'] = "Extraction finished but no playable media URLs were found."
+            return response_data
 
+        response_data.update({
+            'status': 'success',
+            'status_code': 200,
+            'error': None,
+            'servers': u.proxify(media_urls, request)
+        })
+
+    except requests.exceptions.Timeout:
+        response_data['error'] = "The request timed out. The target site is taking too long to respond."
     except requests.exceptions.RequestException as e:
-        response_data['error'] = f'HTTP request failed: {str(e)}'
-    except ValueError:
-        response_data['error'] = 'Failed to parse JSON response'
+        response_data['error'] = f"Network Error: {str(e)}"
     except Exception as e:
-        response_data['error'] = f'[Multimovies] Unexpected error: {str(e)}'
+        response_data['error'] = f"Unexpected Error: {str(e)}"
 
     return response_data
