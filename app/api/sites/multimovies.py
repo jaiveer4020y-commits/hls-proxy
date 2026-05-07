@@ -120,22 +120,14 @@ def real_extract(url, request):
                 return response_data
 
         # 7. Final Verification
+                # 7. Final Verification & Detailed Debugging
         if not media_urls:
-            response_data['error'] = "Extraction finished but no playable media URLs were found."
+            # Check if gdmirrorbot even gave us URLs to begin with
+            if 'embed_urls' not in locals() or not embed_urls:
+                response_data['error'] = "Extraction failed: gdmirrorbot (the middleman) returned no server links."
+            else:
+                # Tell us exactly which servers were attempted and failed
+                attempted = list(embed_urls.keys())
+                response_data['error'] = f"Found servers {attempted}, but ALL failed to extract. Site is likely blocking Vercel."
+            
             return response_data
-
-        response_data.update({
-            'status': 'success',
-            'status_code': 200,
-            'error': None,
-            'servers': u.proxify(media_urls, request)
-        })
-
-    except requests.exceptions.Timeout:
-        response_data['error'] = "The request timed out. The target site is taking too long to respond."
-    except requests.exceptions.RequestException as e:
-        response_data['error'] = f"Network Error: {str(e)}"
-    except Exception as e:
-        response_data['error'] = f"Unexpected Error: {str(e)}"
-
-    return response_data
