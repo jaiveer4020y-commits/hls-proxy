@@ -49,7 +49,7 @@ def real_extract(url, request):
         sid = urlparse(url).path.rstrip("/").split("/")[-1]
         
         # Fetch streaming data
-        post_response = session.get(f"{PROXY_API}?type=post&post_sid={sid}&url=https://pro.gtxgamer.site/embedhelper.php", headers=headers)
+        post_response = session.get(f"{PROXY_API}?type=post&post_sid={sid}&url=https://pro.iqsmartgames.com/embedhelper.php", headers=headers)
         post_response.raise_for_status()
 
         post_json = post_response.json()
