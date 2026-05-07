@@ -1,5 +1,4 @@
 import requests
-import cloudscraper
 from bs4 import BeautifulSoup
 
 from . import streamwish, gdmirrorbot, streamp2p, site_domains
@@ -27,13 +26,7 @@ headers = {
 # SESSION
 # =========================================================
 
-session = cloudscraper.create_scraper(
-    browser={
-        "browser": "chrome",
-        "platform": "windows",
-        "mobile": False
-    }
-)
+session = requests.Session()
 
 
 # =========================================================
@@ -62,6 +55,7 @@ def real_extract(url, request):
         domain = u.get_domain(url)
 
         try:
+
             init_res = session.get(
                 domain,
                 headers=headers,
@@ -80,7 +74,7 @@ def real_extract(url, request):
             return response_data
 
         # =================================================
-        # Fetch page
+        # Target URL
         # =================================================
 
         target_url = url.replace(domain, default_domain)
@@ -108,6 +102,7 @@ def real_extract(url, request):
 
         player_element = soup.select_one("#player-option-1")
 
+        # fallback selector
         if not player_element:
             player_element = soup.select_one("[data-post]")
 
@@ -120,7 +115,7 @@ def real_extract(url, request):
             return response_data
 
         # =================================================
-        # Extract data attributes
+        # Extract player data
         # =================================================
 
         post_id = player_element.get("data-post")
@@ -185,7 +180,7 @@ def real_extract(url, request):
             response_data["error"] = (
                 "Site blocked request. "
                 f"Expected JSON but got {content_type}. "
-                f"Preview: {post_res.text[:150]}"
+                f"Preview: {post_res.text[:200]}"
             )
 
             return response_data
@@ -209,6 +204,10 @@ def real_extract(url, request):
 
             return response_data
 
+        # =================================================
+        # Get embed URL
+        # =================================================
+
         embed_url = response_json.get("embed_url")
 
         if not embed_url:
@@ -222,7 +221,7 @@ def real_extract(url, request):
         media_urls = []
 
         # =================================================
-        # HANDLE IFRAME TYPE
+        # HANDLE IFRAME
         # =================================================
 
         if response_json.get("type") == "iframe":
@@ -232,13 +231,19 @@ def real_extract(url, request):
                 request
             )
 
-            if (
-                not isinstance(embed_data, dict)
-                or embed_data.get("status") == "error"
-            ):
+            if not isinstance(embed_data, dict):
 
                 response_data["error"] = (
-                    "gdmirrorbot extractor failed."
+                    "gdmirrorbot returned invalid response."
+                )
+
+                return response_data
+
+            if embed_data.get("status") == "error":
+
+                response_data["error"] = (
+                    embed_data.get("error")
+                    or "gdmirrorbot extractor failed."
                 )
 
                 return response_data
@@ -249,7 +254,7 @@ def real_extract(url, request):
             )
 
             # =============================================
-            # Auto detect providers
+            # Loop providers
             # =============================================
 
             for key, value in embed_urls.items():
@@ -259,12 +264,14 @@ def real_extract(url, request):
 
                 try:
 
+                    lower_key = key.lower()
+
                     # =====================================
-                    # Streamwish / Filelions / Dwish
+                    # Streamwish / Filelions
                     # =====================================
 
                     if any(
-                        x in key.lower()
+                        x in lower_key
                         for x in [
                             "streamwish",
                             "sw",
@@ -290,7 +297,7 @@ def real_extract(url, request):
                     # StreamP2P
                     # =====================================
 
-                    elif "p2p" in key.lower():
+                    elif "p2p" in lower_key:
 
                         sp2p_res = streamp2p.real_extract(
                             value,
@@ -304,7 +311,7 @@ def real_extract(url, request):
                             media_urls.append(sp2p_res)
 
                 except Exception:
-                    pass
+                    continue
 
         # =================================================
         # HANDLE DTSHCODE
