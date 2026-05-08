@@ -41,15 +41,6 @@ session = requests.Session()
 # =========================================================
 
 def _parse_embed_url(url):
-    """
-    Supported formats:
-
-    TV:
-      /embed/tv/{tmdbid}/{season}/{episode}?key=xxx
-
-    Movie:
-      /embed/movie/{imdbid}?key=xxx
-    """
 
     parsed = urlparse(url)
 
@@ -90,7 +81,7 @@ def _parse_embed_url(url):
 
         tmdbid = path_parts[2]
 
-        # movies do not have season/episode
+        # dummy values for movies
         season = "1"
         episode = "1"
 
@@ -120,23 +111,48 @@ def _parse_embed_url(url):
 
     key = key_list[0]
 
-    return tmdbid, season, episode, key
+    return tmdbid, season, episode, key, embed_type
 
 
 # =========================================================
 # FETCH FILESLUG
 # =========================================================
 
-def _fetch_fileslug(tmdbid, season, episode, key):
+def _fetch_fileslug(
+    tmdbid,
+    season,
+    episode,
+    key,
+    media_type="tv"
+):
 
-    response = session.get(
-        MYSERIES_PROXY,
-        params={
+    # =====================================================
+    # TV
+    # =====================================================
+
+    if media_type == "tv":
+
+        params = {
             "tmdbid": tmdbid,
             "season": season,
             "epname": episode,
             "key": key,
-        },
+        }
+
+    # =====================================================
+    # MOVIE
+    # =====================================================
+
+    else:
+
+        params = {
+            "id": tmdbid,
+            "key": key
+        }
+
+    response = session.get(
+        MYSERIES_PROXY,
+        params=params,
         headers=headers,
         timeout=20
     )
@@ -272,7 +288,7 @@ def real_extract(url, request):
         # Step 1: Parse embed URL
         # =================================================
 
-        tmdbid, season, episode, key = (
+        tmdbid, season, episode, key, media_type = (
             _parse_embed_url(url)
         )
 
@@ -284,7 +300,8 @@ def real_extract(url, request):
             tmdbid,
             season,
             episode,
-            key
+            key,
+            media_type
         )
 
         # =================================================
