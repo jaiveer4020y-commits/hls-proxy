@@ -25,15 +25,6 @@ headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
 }
 
-myseries_headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
-    "Accept": "*/*",
-    "Accept-Encoding": "gzip",
-    "Cache-Control": "max-age=0",
-    "Connection": "Keep-Alive",
-    "Host": "streams.iqsmartgames.com",
-}
-
 # Create session
 session = requests.Session()
 
@@ -64,16 +55,26 @@ def _parse_embed_url(url):
 
 def _fetch_fileslug(tmdbid, season, episode, key):
     """
-    Step 1: GET myseriesapi to get fileslug.
+    Step 1: GET myseriesapi with exact browser headers to avoid 403.
+    Referer must be the same myseriesapi URL (self-referencing).
     """
+    target_url = (
+        f"https://streams.iqsmartgames.com/myseriesapi"
+        f"?tmdbid={tmdbid}&season={season}&epname={episode}&key={key}"
+    )
+
+    myseries_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+        "Referer": target_url,
+        "Cache-Control": "max-age=0",
+        "Host": "streams.iqsmartgames.com",
+        "Connection": "Keep-Alive",
+        "Accept-Encoding": "gzip",
+        "If-Modified-Since": "Wed, 06 May 2026 08:02:05 GMT",
+    }
+
     response = session.get(
-        "https://streams.iqsmartgames.com/myseriesapi",
-        params={
-            "tmdbid": tmdbid,
-            "season": season,
-            "epname": episode,
-            "key": key,
-        },
+        target_url,
         headers=myseries_headers,
         timeout=15
     )
@@ -131,7 +132,6 @@ def _build_iframe_urls(embed_data):
     """
     iframe_urls = {}
 
-    # Decode mresult → stream IDs
     mresult = embed_data.get("mresult", "")
     if not mresult:
         raise ValueError("mresult missing or empty in embed data")
@@ -166,7 +166,7 @@ def real_extract(url, request):
 
     Flow:
       1. Parse embed URL → tmdbid, season, episode, key
-      2. GET myseriesapi → fileslug
+      2. GET myseriesapi with self-referencing Referer header → fileslug
       3. POST embedhelper.php via proxy with sid=fileslug
       4. Decode mresult base64 → stream IDs + combine with siteUrls
 
