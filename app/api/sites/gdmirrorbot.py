@@ -55,28 +55,23 @@ def _parse_embed_url(url):
 
 def _fetch_fileslug(tmdbid, season, episode, key):
     """
-    Step 1: GET myseriesapi with exact browser headers to avoid 403.
-    Referer must be the same myseriesapi URL (self-referencing).
+    Step 1: GET myseriesapi via proxy get method to bypass IP-based 403.
     """
     target_url = (
         f"https://streams.iqsmartgames.com/myseriesapi"
         f"?tmdbid={tmdbid}&season={season}&epname={episode}&key={key}"
     )
 
-    myseries_headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
-        "Referer": target_url,
-        "Cache-Control": "max-age=0",
-        "Host": "streams.iqsmartgames.com",
-        "Connection": "Keep-Alive",
-        "Accept-Encoding": "gzip",
-        "If-Modified-Since": "Wed, 06 May 2026 08:02:05 GMT",
-    }
-
     response = session.get(
-        target_url,
-        headers=myseries_headers,
-        timeout=15
+        PROXY_API,
+        params={
+            "type": "get",
+            "url": target_url,
+            "referer": target_url,
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+        },
+        headers=headers,
+        timeout=20
     )
     response.raise_for_status()
 
@@ -98,7 +93,7 @@ def _fetch_fileslug(tmdbid, season, episode, key):
 
 def _fetch_embed_data(fileslug):
     """
-    Step 2: POST embedhelper.php via proxy with plain sid (no curly braces).
+    Step 2: POST embedhelper.php via proxy with plain sid.
     Returns full response JSON.
     """
     response = session.get(
@@ -166,7 +161,7 @@ def real_extract(url, request):
 
     Flow:
       1. Parse embed URL → tmdbid, season, episode, key
-      2. GET myseriesapi with self-referencing Referer header → fileslug
+      2. GET myseriesapi via proxy → fileslug
       3. POST embedhelper.php via proxy with sid=fileslug
       4. Decode mresult base64 → stream IDs + combine with siteUrls
 
@@ -189,10 +184,10 @@ def real_extract(url, request):
         # Step 1: Parse embed URL
         tmdbid, season, episode, key = _parse_embed_url(url)
 
-        # Step 2: Fetch fileslug from myseriesapi
+        # Step 2: Fetch fileslug via proxy get
         fileslug = _fetch_fileslug(tmdbid, season, episode, key)
 
-        # Step 3: Fetch embed data via proxy
+        # Step 3: Fetch embed data via proxy post
         embed_data = _fetch_embed_data(fileslug)
 
         # Step 4: Build iframe URLs from mresult
