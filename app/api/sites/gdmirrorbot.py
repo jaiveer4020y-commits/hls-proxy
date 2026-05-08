@@ -1,3 +1,4 @@
+import re
 import requests
 import base64
 import json
@@ -55,40 +56,44 @@ def _parse_embed_url(url):
 
 def _fetch_fileslug(tmdbid, season, episode, key):
     """
-    Step 1: GET myseriesapi via proxy get method to bypass IP-based 403.
+    Step 1: Fetch embed page HTML and extract fileslug from iframe src.
+    Pattern: <iframe ... src="https://pro.iqsmartgames.com/evid/{fileslug}">
+    Avoids calling myseriesapi directly (IP blocked by Cloudflare).
     """
-    target_url = (
-        f"https://streams.iqsmartgames.com/myseriesapi"
-        f"?tmdbid={tmdbid}&season={season}&epname={episode}&key={key}"
+    embed_url = (
+        f"https://streams.iqsmartgames.com/embed/tv/{tmdbid}/{season}/{episode}"
+        f"?key={key}"
     )
 
+    embed_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+        "Referer": "https://streams.iqsmartgames.com",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "max-age=0",
+        "Connection": "Keep-Alive",
+    }
+
     response = session.get(
-        PROXY_API,
-        params={
-            "type": "get",
-            "url": target_url,
-            "referer": target_url,
-            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
-        },
-        headers=headers,
-        timeout=20
+        embed_url,
+        headers=embed_headers,
+        timeout=15
     )
     response.raise_for_status()
 
-    data = response.json()
+    html = response.text
 
-    if not data.get("success"):
-        raise ValueError(f"myseriesapi error: {data.get('message', 'Unknown error')}")
+    # Extract fileslug from iframe src:
+    # <iframe ... src="https://pro.iqsmartgames.com/evid/{fileslug}">
+    match = re.search(
+        r'https://pro\.iqsmartgames\.com/evid/([a-zA-Z0-9]+)',
+        html
+    )
+    if match:
+        return match.group(1)
 
-    items = data.get("data", [])
-    if not items:
-        raise ValueError("myseriesapi returned empty data list")
-
-    fileslug = items[0].get("fileslug")
-    if not fileslug:
-        raise ValueError("fileslug missing in myseriesapi response")
-
-    return fileslug
+    raise ValueError("Could not extract fileslug from embed page HTML")
 
 
 def _fetch_embed_data(fileslug):
@@ -161,7 +166,7 @@ def real_extract(url, request):
 
     Flow:
       1. Parse embed URL → tmdbid, season, episode, key
-      2. GET myseriesapi via proxy → fileslug
+      2. GET embed page HTML → extract fileslug from iframe src
       3. POST embedhelper.php via proxy with sid=fileslug
       4. Decode mresult base64 → stream IDs + combine with siteUrls
 
@@ -184,10 +189,10 @@ def real_extract(url, request):
         # Step 1: Parse embed URL
         tmdbid, season, episode, key = _parse_embed_url(url)
 
-        # Step 2: Fetch fileslug via proxy get
+        # Step 2: Fetch fileslug from embed page HTML
         fileslug = _fetch_fileslug(tmdbid, season, episode, key)
 
-        # Step 3: Fetch embed data via proxy post
+        # Step 3: Fetch embed data via proxy
         embed_data = _fetch_embed_data(fileslug)
 
         # Step 4: Build iframe URLs from mresult
