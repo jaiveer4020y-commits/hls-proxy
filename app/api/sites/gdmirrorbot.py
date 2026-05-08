@@ -16,9 +16,10 @@ PROXY_API = (
     "AKfycbz54yydg-bHZPUB9URu9WxcAQmtD25IV5bREsfGf-6MX4sjqlOn4sPCzeVSgLTaKMtc3Q/exec"
 )
 
+# NEW TV + MOVIE API PROXY
 MYSERIES_PROXY = (
     "https://script.google.com/macros/s/"
-    "AKfycbz8qd16K14o2_lncugE65j7V-WlDWLDogvHcXyT6tdcWQA3SitMqoygzofe4tRnQ4Nbug/exec"
+    "AKfycbw8pW6LI6nNDxqn1wXaPOzHN5QBaeqB12qv-J5NaNcu7IWqbsX9KJkruY_8y8wW12hv/exec"
 )
 
 headers = {
@@ -146,7 +147,7 @@ def _fetch_fileslug(parsed_data):
     media_type = parsed_data["media_type"]
 
     # =====================================================
-    # TV API
+    # TV
     # =====================================================
 
     if media_type == "tv":
@@ -154,6 +155,7 @@ def _fetch_fileslug(parsed_data):
         response = session.get(
             MYSERIES_PROXY,
             params={
+                "type": "tv",
                 "tmdbid": parsed_data["media_id"],
                 "season": parsed_data["season"],
                 "epname": parsed_data["episode"],
@@ -163,52 +165,22 @@ def _fetch_fileslug(parsed_data):
             timeout=20
         )
 
-        response.raise_for_status()
-
-        data = response.json()
-
-        if not data.get("success"):
-
-            raise ValueError(
-                f"myseriesapi error: "
-                f"{data.get('message', 'Unknown error')}"
-            )
-
-        items = data.get("data", [])
-
-        if not items:
-
-            raise ValueError(
-                "myseriesapi returned empty data"
-            )
-
-        fileslug = items[0].get("fileslug")
-
-        if not fileslug:
-
-            raise ValueError(
-                "fileslug missing in TV response"
-            )
-
-        return fileslug
-
     # =====================================================
-    # MOVIE API
+    # MOVIE
     # =====================================================
 
-    movie_url = (
-        "https://streams.iqsmartgames.com/mymovieapi"
-    )
+    else:
 
-    response = session.get(
-        movie_url,
-        params={
-            "imdbid": parsed_data["media_id"],
-            "key": parsed_data["key"]
-        },
-        headers=headers,
-        timeout=20
-    )
+        response = session.get(
+            MYSERIES_PROXY,
+            params={
+                "type": "movie",
+                "imdbid": parsed_data["media_id"],
+                "key": parsed_data["key"]
+            },
+            headers=headers,
+            timeout=20
+        )
 
     response.raise_for_status()
 
@@ -217,8 +189,10 @@ def _fetch_fileslug(parsed_data):
     if not data.get("success"):
 
         raise ValueError(
-            f"mymovieapi error: "
-            f"{data.get('message', 'Unknown error')}"
+            data.get(
+                "message",
+                "Unknown API error"
+            )
         )
 
     items = data.get("data", [])
@@ -226,7 +200,7 @@ def _fetch_fileslug(parsed_data):
     if not items:
 
         raise ValueError(
-            "mymovieapi returned empty data"
+            "API returned empty data"
         )
 
     fileslug = items[0].get("fileslug")
@@ -234,7 +208,7 @@ def _fetch_fileslug(parsed_data):
     if not fileslug:
 
         raise ValueError(
-            "fileslug missing in movie response"
+            "fileslug missing in API response"
         )
 
     return fileslug
