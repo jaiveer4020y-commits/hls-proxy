@@ -9,6 +9,7 @@ from . import site_domains
 default_domain = site_domains.get_domain('gdmirrorbot')
 
 PROXY_API = "https://script.google.com/macros/s/AKfycbz54yydg-bHZPUB9URu9WxcAQmtD25IV5bREsfGf-6MX4sjqlOn4sPCzeVSgLTaKMtc3Q/exec"
+MYSERIES_PROXY = "https://script.google.com/macros/s/AKfycby6Mr8m_v8N_bq7R8ANalwi69J_kq7PIKXtlC2TJBlRRB020cAgar7Sk_U3jzd0fJyrkw/exec"
 
 headers = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -56,44 +57,36 @@ def _parse_embed_url(url):
 
 def _fetch_fileslug(tmdbid, season, episode, key):
     """
-    Step 1: Fetch embed page HTML and extract fileslug from iframe src.
-    Pattern: <iframe ... src="https://pro.iqsmartgames.com/evid/{fileslug}">
-    Avoids calling myseriesapi directly (IP blocked by Cloudflare).
+    Step 1: GET myseriesapi via dedicated proxy to bypass IP-based 403.
+    Proxy passes correct Referer and User-Agent headers.
     """
-    embed_url = (
-        f"https://streams.iqsmartgames.com/embed/tv/{tmdbid}/{season}/{episode}"
-        f"?key={key}"
-    )
-
-    embed_headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
-        "Referer": "https://streams.iqsmartgames.com",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Cache-Control": "max-age=0",
-        "Connection": "Keep-Alive",
-    }
-
     response = session.get(
-        embed_url,
-        headers=embed_headers,
-        timeout=15
+        MYSERIES_PROXY,
+        params={
+            "tmdbid": tmdbid,
+            "season": season,
+            "epname": episode,
+            "key":    key,
+        },
+        headers=headers,
+        timeout=20
     )
     response.raise_for_status()
 
-    html = response.text
+    data = response.json()
 
-    # Extract fileslug from iframe src:
-    # <iframe ... src="https://pro.iqsmartgames.com/evid/{fileslug}">
-    match = re.search(
-        r'https://pro\.iqsmartgames\.com/evid/([a-zA-Z0-9]+)',
-        html
-    )
-    if match:
-        return match.group(1)
+    if not data.get("success"):
+        raise ValueError(f"myseriesapi error: {data.get('message', 'Unknown error')}")
 
-    raise ValueError("Could not extract fileslug from embed page HTML")
+    items = data.get("data", [])
+    if not items:
+        raise ValueError("myseriesapi returned empty data list")
+
+    fileslug = items[0].get("fileslug")
+    if not fileslug:
+        raise ValueError("fileslug missing in myseriesapi response")
+
+    return fileslug
 
 
 def _fetch_embed_data(fileslug):
@@ -104,9 +97,9 @@ def _fetch_embed_data(fileslug):
     response = session.get(
         PROXY_API,
         params={
-            "type": "post",
+            "type":     "post",
             "post_sid": fileslug,
-            "url": "https://pro.iqsmartgames.com/embedhelper.php"
+            "url":      "https://pro.iqsmartgames.com/embedhelper.php"
         },
         headers=headers,
         timeout=20
@@ -122,11 +115,11 @@ def _build_iframe_urls(embed_data):
 
     mresult decodes to e.g.:
     {
-      "smwh": "n2pwiubil1oz",
-      "strmp2": "vieug6",
-      "flls": "mgugmtbjupw1",
-      "rpmshre": "bffhig",
-      "upnshr": "mhlhax",
+      "smwh":     "n2pwiubil1oz",
+      "strmp2":   "vieug6",
+      "flls":     "mgugmtbjupw1",
+      "rpmshre":  "bffhig",
+      "upnshr":   "mhlhax",
       ...
     }
     """
@@ -136,7 +129,7 @@ def _build_iframe_urls(embed_data):
     if not mresult:
         raise ValueError("mresult missing or empty in embed data")
 
-    decoded = base64.b64decode(mresult).decode("utf-8")
+    decoded    = base64.b64decode(mresult).decode("utf-8")
     stream_ids = json.loads(decoded)
 
     if not stream_ids:
@@ -166,7 +159,7 @@ def real_extract(url, request):
 
     Flow:
       1. Parse embed URL → tmdbid, season, episode, key
-      2. GET embed page HTML → extract fileslug from iframe src
+      2. GET myseriesapi via dedicated proxy → fileslug
       3. POST embedhelper.php via proxy with sid=fileslug
       4. Decode mresult base64 → stream IDs + combine with siteUrls
 
@@ -179,9 +172,9 @@ def real_extract(url, request):
       }
     """
     response_data = {
-        "status": "error",
+        "status":     "error",
         "status_code": 400,
-        "error": None,
+        "error":      None,
         "embed_urls": {}
     }
 
@@ -189,10 +182,10 @@ def real_extract(url, request):
         # Step 1: Parse embed URL
         tmdbid, season, episode, key = _parse_embed_url(url)
 
-        # Step 2: Fetch fileslug from embed page HTML
+        # Step 2: Fetch fileslug via dedicated myseriesapi proxy
         fileslug = _fetch_fileslug(tmdbid, season, episode, key)
 
-        # Step 3: Fetch embed data via proxy
+        # Step 3: Fetch embed data via embedhelper proxy
         embed_data = _fetch_embed_data(fileslug)
 
         # Step 4: Build iframe URLs from mresult
@@ -203,10 +196,10 @@ def real_extract(url, request):
             return response_data
 
         # Success
-        response_data["status"] = "success"
+        response_data["status"]      = "success"
         response_data["status_code"] = 200
-        response_data["error"] = None
-        response_data["embed_urls"] = iframe_urls
+        response_data["error"]       = None
+        response_data["embed_urls"]  = iframe_urls
 
     except requests.exceptions.Timeout:
         response_data["error"] = "[GDMirror] Request timed out"
