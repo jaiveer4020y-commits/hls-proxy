@@ -1,14 +1,11 @@
 import requests
-import re
 import base64
 import json
-from urllib.parse import urlparse, parse_qs, urlencode
+from urllib.parse import urlparse, parse_qs
 from . import site_domains
 
 # Configuration
 default_domain = site_domains.get_domain('gdmirrorbot')
-streamwish_domain = site_domains.get_domain('streamwish')
-streamp2p_domain = site_domains.get_domain('streamp2p')
 
 PROXY_API = "https://script.google.com/macros/s/AKfycbz54yydg-bHZPUB9URu9WxcAQmtD25IV5bREsfGf-6MX4sjqlOn4sPCzeVSgLTaKMtc3Q/exec"
 
@@ -28,15 +25,13 @@ headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
 }
 
-embedhelper_headers = {
-    **headers,
-    "Content-Type": "application/x-www-form-urlencoded",
-    "x-requested-with": "XMLHttpRequest",
-    "Referer": "https://pro.iqsmartgames.com",
-    "Host": "pro.iqsmartgames.com",
-    "Sec-Fetch-Site": "same-origin",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Dest": "empty",
+myseries_headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip",
+    "Cache-Control": "max-age=0",
+    "Connection": "Keep-Alive",
+    "Host": "streams.iqsmartgames.com",
 }
 
 # Create session
@@ -69,32 +64,22 @@ def _parse_embed_url(url):
 
 def _fetch_fileslug(tmdbid, season, episode, key):
     """
-    Step 1: GET myseriesapi via proxy to get fileslug.
-    Proxy bypasses 403 by making request from Google servers.
+    Step 1: GET myseriesapi to get fileslug.
     """
-    target_url = (
-        f"https://streams.iqsmartgames.com/myseriesapi"
-        f"?tmdbid={tmdbid}&season={season}&epname={episode}&key={key}"
-    )
-
     response = session.get(
-        PROXY_API,
+        "https://streams.iqsmartgames.com/myseriesapi",
         params={
-            "type": "get",
-            "url": target_url
+            "tmdbid": tmdbid,
+            "season": season,
+            "epname": episode,
+            "key": key,
         },
-        headers=headers,
-        timeout=20
+        headers=myseries_headers,
+        timeout=15
     )
     response.raise_for_status()
 
     data = response.json()
-
-    # Handle proxy wrapping — try both wrapped and unwrapped
-    if "data" not in data and "response" in data:
-        data = data["response"]
-    elif "data" not in data and "mresult" in data:
-        data = json.loads(base64.b64decode(data["mresult"]).decode("utf-8"))
 
     if not data.get("success"):
         raise ValueError(f"myseriesapi error: {data.get('message', 'Unknown error')}")
@@ -110,10 +95,10 @@ def _fetch_fileslug(tmdbid, season, episode, key):
     return fileslug
 
 
-def _fetch_stream_keys(fileslug):
+def _fetch_embed_data(fileslug):
     """
-    Step 2: POST embedhelper.php via proxy with sid=fileslug.
-    Returns decoded JSON with stream keys.
+    Step 2: POST embedhelper.php via proxy with plain sid (no curly braces).
+    Returns full response JSON.
     """
     response = session.get(
         PROXY_API,
@@ -126,30 +111,51 @@ def _fetch_stream_keys(fileslug):
         timeout=20
     )
     response.raise_for_status()
-
-    embed_json = response.json()
-
-    if "mresult" not in embed_json:
-        raise ValueError(f"No 'mresult' in embedhelper response: {list(embed_json.keys())}")
-
-    decoded = base64.b64decode(embed_json["mresult"]).decode("utf-8")
-    stream_data = json.loads(decoded)
-
-    return stream_data
+    return response.json()
 
 
-def _build_iframe_urls(stream_data):
+def _build_iframe_urls(embed_data):
     """
-    Step 3: Build iframe URLs from stream keys.
-    Returns dict of provider -> url.
+    Step 3: Decode mresult base64 JSON to get stream IDs,
+    then combine with siteUrls to build final URLs.
+
+    mresult decodes to e.g.:
+    {
+      "smwh": "n2pwiubil1oz",
+      "strmp2": "vieug6",
+      "flls": "mgugmtbjupw1",
+      "rpmshre": "bffhig",
+      "upnshr": "mhlhax",
+      ...
+    }
     """
     iframe_urls = {}
 
-    if "smwh" in stream_data:
-        iframe_urls["streamwish"] = f"{streamwish_domain}/e/{stream_data['smwh']}"
+    # Decode mresult → stream IDs
+    mresult = embed_data.get("mresult", "")
+    if not mresult:
+        raise ValueError("mresult missing or empty in embed data")
 
-    if "strmp2" in stream_data:
-        iframe_urls["streamp2p"] = f"{streamp2p_domain}/#{stream_data['strmp2']}"
+    decoded = base64.b64decode(mresult).decode("utf-8")
+    stream_ids = json.loads(decoded)
+
+    if not stream_ids:
+        raise ValueError("mresult decoded to empty — check fileslug is correct")
+
+    site_urls      = embed_data.get("siteUrls", {})
+    friendly_names = embed_data.get("siteFriendlyNames", {})
+
+    for provider_key, stream_id in stream_ids.items():
+        if not stream_id:
+            continue
+
+        base_url = site_urls.get(provider_key)
+        if not base_url:
+            continue
+
+        name     = friendly_names.get(provider_key, provider_key)
+        full_url = f"{base_url}{stream_id}"
+        iframe_urls[name] = full_url
 
     return iframe_urls
 
@@ -160,16 +166,16 @@ def real_extract(url, request):
 
     Flow:
       1. Parse embed URL → tmdbid, season, episode, key
-      2. GET myseriesapi via proxy → fileslug
-      3. POST embedhelper.php via proxy with sid=fileslug → base64 stream keys
-      4. Decode and build final iframe URLs
+      2. GET myseriesapi → fileslug
+      3. POST embedhelper.php via proxy with sid=fileslug
+      4. Decode mresult base64 → stream IDs + combine with siteUrls
 
     Returns dict:
       {
         'status': 'success' | 'error',
         'status_code': 200 | 400,
         'error': None | str,
-        'embed_urls': {} | {'streamwish': '...', 'streamp2p': '...'}
+        'embed_urls': {} | {'StreamHG': '...', 'StreamP2p': '...', ...}
       }
     """
     response_data = {
@@ -183,17 +189,17 @@ def real_extract(url, request):
         # Step 1: Parse embed URL
         tmdbid, season, episode, key = _parse_embed_url(url)
 
-        # Step 2: Fetch fileslug via proxy
+        # Step 2: Fetch fileslug from myseriesapi
         fileslug = _fetch_fileslug(tmdbid, season, episode, key)
 
-        # Step 3: Fetch stream keys via proxy
-        stream_data = _fetch_stream_keys(fileslug)
+        # Step 3: Fetch embed data via proxy
+        embed_data = _fetch_embed_data(fileslug)
 
-        # Step 4: Build iframe URLs
-        iframe_urls = _build_iframe_urls(stream_data)
+        # Step 4: Build iframe URLs from mresult
+        iframe_urls = _build_iframe_urls(embed_data)
 
         if not iframe_urls:
-            response_data["error"] = "No supported stream keys found (smwh/strmp2 missing)"
+            response_data["error"] = "No stream URLs could be built from embed data"
             return response_data
 
         # Success
