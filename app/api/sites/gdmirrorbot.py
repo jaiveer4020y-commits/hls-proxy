@@ -8,8 +8,8 @@ from . import site_domains
 # Configuration
 default_domain = site_domains.get_domain('gdmirrorbot')
 
-PROXY_API = "https://script.google.com/macros/s/AKfycbz54yydg-bHZPUB9URu9WxcAQmtD25IV5bREsfGf-6MX4sjqlOn4sPCzeVSgLTaKMtc3Q/exec"
-MYSERIES_PROXY = "https://script.google.com/macros/s/AKfycby6Mr8m_v8N_bq7R8ANalwi69J_kq7PIKXtlC2TJBlRRB020cAgar7Sk_U3jzd0fJyrkw/exec"
+PROXY_API     = "https://script.google.com/macros/s/AKfycbz54yydg-bHZPUB9URu9WxcAQmtD25IV5bREsfGf-6MX4sjqlOn4sPCzeVSgLTaKMtc3Q/exec"
+MYSERIES_PROXY = "https://script.google.com/macros/s/AKfycbz8qd16K14o2_lncugE65j7V-WlDWLDogvHcXyT6tdcWQA3SitMqoygzofe4tRnQ4Nbug/exec"
 
 headers = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
@@ -58,7 +58,7 @@ def _parse_embed_url(url):
 def _fetch_fileslug(tmdbid, season, episode, key):
     """
     Step 1: GET myseriesapi via dedicated proxy to bypass IP-based 403.
-    Proxy passes correct Referer and User-Agent headers.
+    Proxy passes correct Referer and User-Agent headers from Google servers.
     """
     response = session.get(
         MYSERIES_PROXY,
@@ -115,11 +115,11 @@ def _build_iframe_urls(embed_data):
 
     mresult decodes to e.g.:
     {
-      "smwh":     "n2pwiubil1oz",
-      "strmp2":   "vieug6",
-      "flls":     "mgugmtbjupw1",
-      "rpmshre":  "bffhig",
-      "upnshr":   "mhlhax",
+      "smwh":    "n2pwiubil1oz",
+      "strmp2":  "vieug6",
+      "flls":    "mgugmtbjupw1",
+      "rpmshre": "bffhig",
+      "upnshr":  "mhlhax",
       ...
     }
     """
@@ -172,10 +172,10 @@ def real_extract(url, request):
       }
     """
     response_data = {
-        "status":     "error",
+        "status":      "error",
         "status_code": 400,
-        "error":      None,
-        "embed_urls": {}
+        "error":       None,
+        "embed_urls":  {}
     }
 
     try:
