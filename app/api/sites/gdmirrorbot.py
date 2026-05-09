@@ -16,7 +16,6 @@ PROXY_API = (
     "AKfycbz54yydg-bHZPUB9URu9WxcAQmtD25IV5bREsfGf-6MX4sjqlOn4sPCzeVSgLTaKMtc3Q/exec"
 )
 
-# NEW TV + MOVIE API PROXY
 MYSERIES_PROXY = (
     "https://script.google.com/macros/s/"
     "AKfycbw8pW6LI6nNDxqn1wXaPOzHN5QBaeqB12qv-J5NaNcu7IWqbsX9KJkruY_8y8wW12hv/exec"
@@ -46,15 +45,48 @@ headers = {
     ),
 }
 
-# =========================================================
-# SESSION
-# =========================================================
-
 session = requests.Session()
 
 
 # =========================================================
-# PARSE EMBED URL
+# DIRECT SID FORMAT
+# Example:
+# https://gdmirrorbot.nl/embed/ma0svfn
+# =========================================================
+
+def _is_direct_sid(url):
+
+    parsed = urlparse(url)
+
+    path_parts = [
+        x for x in parsed.path.split("/")
+        if x
+    ]
+
+    return (
+        len(path_parts) == 2
+        and path_parts[0] == "embed"
+    )
+
+
+# =========================================================
+# EXTRACT SID
+# =========================================================
+
+def _extract_direct_sid(url):
+
+    parsed = urlparse(url)
+
+    path_parts = [
+        x for x in parsed.path.split("/")
+        if x
+    ]
+
+    return path_parts[1]
+
+
+# =========================================================
+# PARSE MODERN EMBED URL
 # =========================================================
 
 def _parse_embed_url(url):
@@ -105,19 +137,11 @@ def _parse_embed_url(url):
         season = None
         episode = None
 
-    # =====================================================
-    # UNKNOWN
-    # =====================================================
-
     else:
 
         raise ValueError(
             f"Unsupported embed type: {embed_type}"
         )
-
-    # =====================================================
-    # KEY
-    # =====================================================
 
     query_params = parse_qs(parsed.query)
 
@@ -240,7 +264,7 @@ def _fetch_embed_data(fileslug):
 
 
 # =========================================================
-# BUILD IFRAME URLS
+# BUILD URLS
 # =========================================================
 
 def _build_iframe_urls(embed_data):
@@ -300,7 +324,7 @@ def _build_iframe_urls(embed_data):
 
 
 # =========================================================
-# MAIN EXTRACTOR
+# MAIN
 # =========================================================
 
 def real_extract(url, request):
@@ -315,24 +339,31 @@ def real_extract(url, request):
     try:
 
         # =================================================
-        # STEP 1
-        # Parse URL
+        # OLD DIRECT SID FORMAT
         # =================================================
 
-        parsed_data = _parse_embed_url(url)
+        if _is_direct_sid(url):
+
+            fileslug = _extract_direct_sid(
+                url
+            )
 
         # =================================================
-        # STEP 2
-        # Get fileslug
+        # NEW MODERN FORMAT
         # =================================================
 
-        fileslug = _fetch_fileslug(
-            parsed_data
-        )
+        else:
+
+            parsed_data = _parse_embed_url(
+                url
+            )
+
+            fileslug = _fetch_fileslug(
+                parsed_data
+            )
 
         # =================================================
-        # STEP 3
-        # Fetch embed data
+        # FETCH EMBED DATA
         # =================================================
 
         embed_data = _fetch_embed_data(
@@ -340,8 +371,7 @@ def real_extract(url, request):
         )
 
         # =================================================
-        # STEP 4
-        # Build stream URLs
+        # BUILD STREAM URLS
         # =================================================
 
         iframe_urls = _build_iframe_urls(
