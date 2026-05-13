@@ -14,14 +14,14 @@ headers = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/128.0.0.0 Safari/537.36"
+        "Chrome/110.0.0.0 Safari/537.36"
     ),
     "Accept": "application/json, text/javascript, */*; q=0.01",
     "Accept-Language": "en-US,en;q=0.9",
     "X-Requested-With": "XMLHttpRequest",
     "Connection": "keep-alive",
     "Referer": "https://multimovies.fyi/",
-    "sec-ch-ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+    "sec-ch-ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="110"',
     "sec-ch-ua-mobile": "?0",
     "sec-ch-ua-platform": '"Windows"',
     "Sec-Fetch-Dest": "empty",
@@ -34,7 +34,7 @@ headers = {
 # =========================================================
 
 # This is the key fix: it mimics a real browser's network handshake
-session = requests.Session(impersonate="chrome128")
+session = requests.Session(impersonate="chrome110")
 
 # =========================================================
 # MAIN EXTRACTOR
