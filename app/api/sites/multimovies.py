@@ -6,7 +6,7 @@ from . import utils as u
 
 
 # =========================================================
-# HEADERS
+# HEADERS (Full Stealth Configuration)
 # =========================================================
 
 headers = {
@@ -17,8 +17,21 @@ headers = {
     ),
     "Accept": "application/json, text/javascript, */*; q=0.01",
     "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
     "X-Requested-With": "XMLHttpRequest",
-    "Connection": "keep-alive"
+    "Connection": "keep-alive",
+    "Referer": "https://multimovies.fyi/",
+    # Client Hints (Crucial for bypass)
+    "sec-ch-ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    # Fetch Metadata (Proves request origin)
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+    "DNT": "1", # Do Not Track
+    "Pragma": "no-cache",
+    "Cache-Control": "no-cache",
 }
 
 
