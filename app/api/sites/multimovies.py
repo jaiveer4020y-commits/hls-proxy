@@ -52,22 +52,22 @@ def real_extract(url, request):
             response_data["error"] = "Could not extract player IDs — Cloudflare challenge or page structure changed"
             return response_data
 
-        post = post_match.group(1)
-        nume = nume_match.group(1) if nume_match else "1"
-        type_ = type_match.group(1) if type_match else "tv"
-
         # Step 3: Resolve AJAX via Google Proxy
         ajax_url = f"{domain.rstrip('/')}/wp-admin/admin-ajax.php"
+
+        ajax_payload = {
+            "action": "doo_player_ajax",
+            "post":   post_match.group(1),
+            "nume":   nume_match.group(1) if nume_match else "1",
+            "type":   type_match.group(1) if type_match else "tv"
+        }
 
         ajax_res = requests.get(
             GOOGLE_PROXY,
             params={
-                "type":        "post",
-                "url":         ajax_url,
-                "action":      "doo_player_ajax",
-                "post":        post,
-                "nume":        nume,
-                "type_value":  type_
+                "type": "post",
+                "url":  ajax_url,
+                **{f"data_{k}": v for k, v in ajax_payload.items()}
             },
             timeout=15,
             impersonate="chrome124"
