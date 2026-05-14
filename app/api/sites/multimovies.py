@@ -1,14 +1,14 @@
 from curl_cffi import requests
 from bs4 import BeautifulSoup
 import re
+import time
 from urllib.parse import quote
 
 # Relative imports
 from . import gdmirrorbot
 from . import utils as u
 
-# We use the Workingg Proxy as the primary entry point to save time
-# Adding source=2 directly to help with the bypass
+# Primary Proxy
 PROXY_BASE = "https://workingg.vercel.app/api/proxy?source=2&url="
 
 def real_extract(url, request):
@@ -22,66 +22,82 @@ def real_extract(url, request):
     try:
         domain = u.get_domain(url)
         
-        # 1. Simplify the Proxy Chain to avoid the 30s Timeout
-        # We drop the hls-proxy layer and go directly through workingg
+        # 1. Stealth Navigation Headers
+        # We mimic a user coming directly from the homepage
+        stealth_headers = {
+            "Authority": domain.replace("https://", ""),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": f"{domain}/",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+        }
+
+        # 2. Execute Request through Workingg Proxy
         proxied_url = f"{PROXY_BASE}{quote(url)}"
         
-        # 2. Optimized Curl Configuration
-        # 'impersonate' adds overhead; 'chrome' is faster than 'chrome120'
-        # We set the timeout slightly lower than Vercel's to catch the error gracefully
+        # Using 'chrome' impersonation for better TLS fingerprinting
         response = requests.get(
             proxied_url, 
+            headers=stealth_headers,
             timeout=25, 
-            impersonate="chrome",
-            verify=False # Skip SSL verification to save a few milliseconds
+            impersonate="chrome"
         )
         
         if response.status_code != 200:
-            response_data["error"] = f"Proxy Timeout or Block (Status: {response.status_code})"
+            response_data["error"] = f"Site Blocked Request (Status: {response.status_code})"
             return response_data
 
         html_content = response.text
 
-        # 3. Fast-Extract Player Attributes
-        # Regex is significantly faster than BeautifulSoup for large HTML pages
-        post_id = re.search(r'data-post=["\'](\d+)["\']', html_content)
-        nume = re.search(r'data-nume=["\'](\d+)["\']', html_content)
-        dtype = re.search(r'data-type=["\'](movie|tv|episode)["\']', html_content)
+        # 3. Extract Player IDs (Regex is safer for challenged HTML)
+        # We look for the ID inside the 'doo_player_ajax' pattern specifically
+        post_match = re.search(r'data-post=["\'](\d+)["\']', html_content)
+        nume_match = re.search(r'data-nume=["\'](\d+)["\']', html_content)
+        type_match = re.search(r'data-type=["\'](movie|tv|episode)["\']', html_content)
 
-        if not (post_id and nume and dtype):
-            response_data["error"] = "Target reached, but site is hiding player data (403/Challenge)."
+        if not post_match:
+            # If standard regex fails, the site is definitely showing a challenge
+            response_data["error"] = "Cloudflare Challenge detected. Proxy IP might be flagged."
             return response_data
         
-        # 4. AJAX POST via Google Proxy
-        # We keep this via Google because admin-ajax.php is very sensitive to IP
+        # 4. Resolve AJAX via Google Proxy
+        # Google IPs are often 'whitelisted' from basic Cloudflare blocks
         ajax_url = f"{domain.rstrip('/')}/wp-admin/admin-ajax.php"
         google_proxy = "https://script.google.com/macros/s/AKfycbz54yydg-bHZPUB9URu9WxcAQmtD25IV5bREsfGf-6MX4sjqlOn4sPCzeVSgLTaKMtc3Q/exec"
         
         ajax_payload = {
             "action": "doo_player_ajax",
-            "post": post_id.group(1),
-            "nume": nume.group(1),
-            "type": dtype.group(1)
+            "post": post_match.group(1),
+            "nume": nume_match.group(1),
+            "type": type_match.group(1)
         }
 
         ajax_res = requests.post(
             f"{google_proxy}?url={ajax_url}&type=post",
             data=ajax_payload,
-            headers={"X-Requested-With": "XMLHttpRequest", "Referer": url},
-            timeout=15 # Short timeout for AJAX
+            headers={
+                "X-Requested-With": "XMLHttpRequest", 
+                "Referer": url,
+                "Origin": domain
+            },
+            timeout=15
         )
 
-        embed_url = ajax_res.json().get("embed_url")
+        data = ajax_res.json()
+        embed_url = data.get("embed_url")
 
         if not embed_url:
-            response_data["error"] = "AJAX finished but no embed link found."
+            response_data["error"] = "AJAX rejected. Check if 'doo_player_ajax' action is still valid."
             return response_data
 
-        # 5. Hand-off to GDMirror
+        # 5. Hand-off to GDMirror for the final provider links
         return gdmirrorbot.real_extract(embed_url, request)
 
-    except requests.exceptions.Timeout:
-        response_data["error"] = "The connection took too long. Try refreshing."
     except Exception as e:
         response_data["error"] = f"Extraction failed: {str(e)}"
 
