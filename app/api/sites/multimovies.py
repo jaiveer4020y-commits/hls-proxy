@@ -2,80 +2,96 @@ from curl_cffi import requests
 from bs4 import BeautifulSoup
 import json
 import re
+import time
+from urllib.parse import quote
 
 # Relative imports
-from . import streamwish, gdmirrorbot, streamp2p, site_domains
+from . import gdmirrorbot
 from . import utils as u
 
-# Your verified working Proxy URL
-PROXY_API = "https://script.google.com/macros/s/AKfycbz54yydg-bHZPUB9URu9WxcAQmtD25IV5bREsfGf-6MX4sjqlOn4sPCzeVSgLTaKMtc3Q/exec"
+# Your double-layered proxy endpoint
+# This routes through workingg -> hls-proxy -> target
+BASE_PROXY = "https://workingg.vercel.app/api/proxy?source=2&url="
+HLS_LAYER = "https://hls-proxy.vercel.app/api/?url="
 
-def proxy_request(method, target_url, data=None, headers=None):
-    """Force all traffic through the Google Apps Script Proxy."""
-    proxy_params = {"url": target_url}
-    if method.upper() == "POST":
-        proxy_params["type"] = "post"
+def get_double_proxied_url(target_url):
+    """Encodes the target URL into the double-proxy chain."""
+    # First, encode the target for the HLS layer
+    encoded_target = quote(target_url)
+    hls_wrapped = f"{HLS_LAYER}{encoded_target}"
     
-    # We use a standard session here because the Proxy handles the TLS
-    try:
-        if method.upper() == "POST":
-            return requests.post(PROXY_API, params=proxy_params, data=data, headers=headers, timeout=25)
-        return requests.get(PROXY_API, params=proxy_params, headers=headers, timeout=25)
-    except Exception as e:
-        print(f"Proxy Request Failed: {e}")
-        return None
+    # Second, encode the HLS layer for the workingg layer
+    final_wrapped = f"{BASE_PROXY}{quote(hls_wrapped)}"
+    return final_wrapped
 
 def real_extract(url, request):
-    response_data = {"status": "error", "status_code": 400, "error": None, "servers": []}
-
-    # 1. Force Domain Resolution via Proxy
-    domain = u.get_domain(url)
-    init_res = proxy_request("GET", domain)
-    
-    if not init_res or init_res.status_code != 200:
-        response_data["error"] = "Proxy could not reach the domain (Blocked even on Google?)."
-        return response_data
-
-    # Use the URL returned by the proxy in case of redirects
-    actual_domain = u.get_domain(init_res.url) if "script.google.com" not in init_res.url else domain
-    target_url = url.replace(domain, actual_domain)
-
-    # 2. Fetch Page via Proxy
-    headers = {"Referer": actual_domain, "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124.0.0.0 Safari/537.36"}
-    response = proxy_request("GET", target_url, headers=headers)
-    
-    if not response or "Forbidden" in response.text:
-        response_data["error"] = "Target page returned 403 via Proxy. Site may require specific cookies."
-        return response_data
-
-    # 3. Parse and Perform AJAX via Proxy
-    soup = BeautifulSoup(response.text, "html.parser")
-    player = soup.select_one("#player-option-1") or soup.select_one("[data-post]")
-    
-    if not player:
-        response_data["error"] = "Extraction stopped: HTML parsed but player data missing (Check Proxy output)."
-        return response_data
-
-    ajax_payload = {
-        "action": "doo_player_ajax",
-        "post": player.get("data-post"),
-        "nume": player.get("data-nume"),
-        "type": player.get("data-type")
+    response_data = {
+        "status": "error",
+        "status_code": 400,
+        "error": None,
+        "servers": []
     }
-    
-    ajax_url = f"{actual_domain.rstrip('/')}/wp-admin/admin-ajax.php"
-    # Note: AJAX MUST be POSTed via Proxy as well
-    post_res = proxy_request("POST", ajax_url, data=ajax_payload, headers=headers)
 
     try:
-        res_json = post_res.json()
-        embed_url = res_json.get("embed_url")
+        # 1. Resolve the Domain (Necessary for Referers)
+        domain = u.get_domain(url)
         
-        # 4. Final Hand-off to gdmirrorbot
-        # Ensure gdmirrorbot also uses the PROXY_API for its internal calls
-        result = gdmirrorbot.real_extract(embed_url, request)
-        return result
+        # 2. Fetch Movie Page via Double Proxy
+        proxied_url = get_double_proxied_url(url)
+        
+        # We use curl_cffi to maintain a clean TLS handshake even with proxies
+        response = requests.get(proxied_url, timeout=30, impersonate="chrome120")
+        
+        if not response or response.status_code != 200:
+            response_data["error"] = f"Double-Proxy failed to reach site (Status: {response.status_code if response else 'Timeout'})"
+            return response_data
+
+        html_content = response.text
+
+        # 3. Extract Player Attributes (Post ID, Nume, Type)
+        # Using Regex to bypass any BeautifulSoup parsing issues with minified code
+        post_id = re.search(r'data-post=["\'](\d+)["\']', html_content)
+        nume = re.search(r'data-nume=["\'](\d+)["\']', html_content)
+        dtype = re.search(r'data-type=["\'](movie|tv|episode)["\']', html_content)
+
+        if not (post_id and nume and dtype):
+            response_data["error"] = "Proxied HTML loaded, but player data-attributes are missing."
+            return response_data
+        
+        p_post = post_id.group(1)
+        p_nume = nume.group(1)
+        p_type = dtype.group(1)
+
+        # 4. Resolve AJAX via Google Proxy (To handle POST payload)
+        # We use Google Apps Script for the AJAX POST because it handles form-data well
+        ajax_url = f"{domain.rstrip('/')}/wp-admin/admin-ajax.php"
+        google_proxy = "https://script.google.com/macros/s/AKfycbz54yydg-bHZPUB9URu9WxcAQmtD25IV5bREsfGf-6MX4sjqlOn4sPCzeVSgLTaKMtc3Q/exec"
+        
+        ajax_payload = {
+            "action": "doo_player_ajax",
+            "post": p_post,
+            "nume": p_nume,
+            "type": p_type
+        }
+
+        ajax_res = requests.post(
+            f"{google_proxy}?url={ajax_url}&type=post",
+            data=ajax_payload,
+            headers={"X-Requested-With": "XMLHttpRequest", "Referer": url},
+            timeout=20
+        )
+
+        res_json = ajax_res.json()
+        embed_url = res_json.get("embed_url")
+
+        if not embed_url:
+            response_data["error"] = "AJAX response was valid but 'embed_url' was missing."
+            return response_data
+
+        # 5. Hand-off to GDMirrorBot
+        # IMPORTANT: Ensure your gdmirrorbot.py also uses your proxy for its calls
+        return gdmirrorbot.real_extract(embed_url, request)
 
     except Exception as e:
-        response_data["error"] = f"AJAX Proxy Failure: {str(e)}"
+        response_data["error"] = f"Final Extractor Crash: {str(e)}"
         return response_data
