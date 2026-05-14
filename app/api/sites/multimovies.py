@@ -1,164 +1,134 @@
 from curl_cffi import requests
 from bs4 import BeautifulSoup
 import time
+import json
 
-# Use relative imports as per your project structure
+# Relative imports
 from . import streamwish, gdmirrorbot, streamp2p, site_domains
 from . import utils as u
 
 # =========================================================
-# HEADERS (Full Stealth Configuration)
+# HEADERS (Enhanced Stealth)
 # =========================================================
-
-headers = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/110.0.0.0 Safari/537.36"
-    ),
-    "Accept": "application/json, text/javascript, */*; q=0.01",
+COMMON_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
-    "X-Requested-With": "XMLHttpRequest",
-    "Connection": "keep-alive",
-    "Referer": "https://multimovies.fyi/",
-    "sec-ch-ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="110"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"Windows"',
-    "Sec-Fetch-Dest": "empty",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Upgrade-Insecure-Requests": "1",
 }
 
-# ========================================================
-# SESSION (Impersonating Chrome 128)
-# =========================================================
+PROXY_API = "https://script.google.com/macros/s/AKfycbz54yydg-bHZPUB9URu9WxcAQmtD25IV5bREsfGf-6MX4sjqlOn4sPCzeVSgLTaKMtc3Q/exec"
 
-# This is the key fix: it mimics a real browser's network handshake
-session = requests.Session(impersonate="chrome110")
+# Use Impersonate for TLS Fingerprinting (Bypasses basic Cloudflare)
+session = requests.Session(impersonate="chrome120")
 
-# =========================================================
-# MAIN EXTRACTOR
-# =========================================================
+def get_html_stealth(url, current_headers):
+    """Try direct impersonation first, fallback to Proxy if 403 occurs."""
+    try:
+        res = session.get(url, headers=current_headers, timeout=15)
+        if res.status_code == 403:
+            # Fallback to Google Proxy if Vercel IP is blocked
+            proxy_url = f"{PROXY_API}?url={url}"
+            res = session.get(proxy_url, headers=current_headers, timeout=20)
+        return res
+    except Exception:
+        return None
 
 def real_extract(url, request):
     response_data = {
-        "status": "error",
-        "status_code": 400,
-        "error": None,
-        "servers": [],
-        "debug": []
+        "status": "error", "status_code": 400, "error": None,
+        "servers": [], "debug": []
     }
 
-    if not url:
-        response_data["error"] = "No URL provided to extractor."
-        return response_data
-
     try:
-        # 1. Resolve Domain & Handle Challenge
+        # 1. Resolve Domain
         domain = u.get_domain(url)
-        try:
-            # First request to solve/bypass verification
-            init_res = session.get(
-                domain,
-                headers=headers,
-                timeout=15,
-                allow_redirects=True
-            )
-            
-            default_domain = u.get_domain(init_res.url)
-            response_data["debug"].append({
-                "step": "resolve_domain",
-                "status": "success",
-                "default_domain": default_domain
-            })
-        except Exception as e:
-            response_data["error"] = f"Domain resolution failed: {str(e)}"
+        init_res = get_html_stealth(domain, COMMON_HEADERS)
+        
+        if not init_res or init_res.status_code != 200:
+            response_data["error"] = f"Site is blocking extraction (Status: {init_res.status_code if init_res else 'Timeout'})"
             return response_data
 
-        # 2. Fetch the Movie Page
+        default_domain = u.get_domain(init_res.url)
         target_url = url.replace(domain, default_domain)
-        page_headers = headers.copy()
+
+        # 2. Fetch Movie Page
+        page_headers = COMMON_HEADERS.copy()
         page_headers.update({"Referer": default_domain})
+        response = get_html_stealth(target_url, page_headers)
+        
+        if not response:
+            response_data["error"] = "Failed to fetch movie page content."
+            return response_data
 
-        response = session.get(target_url, headers=page_headers, timeout=20)
-        response.raise_for_status()
-
-        # 3. Parse HTML for Player Data
+        # 3. Parse Player Data
         soup = BeautifulSoup(response.text, "html.parser")
         player_element = soup.select_one("#player-option-1") or soup.select_one("[data-post]")
 
         if not player_element:
-            response_data["error"] = "Player element not found (Still blocked?)."
+            response_data["error"] = "Player element not found. Site may have changed layout."
             return response_data
 
-        post_id = player_element.get("data-post")
-        data_type = player_element.get("data-type")
-        data_nume = player_element.get("data-nume")
-
-        # 4. AJAX POST for Embed URL
-        ajax_url = f"{default_domain.rstrip('/')}/wp-admin/admin-ajax.php"
         payload = {
             "action": "doo_player_ajax",
-            "post": post_id,
-            "nume": data_nume,
-            "type": data_type
+            "post": player_element.get("data-post"),
+            "nume": player_element.get("data-nume"),
+            "type": player_element.get("data-type")
         }
 
-        post_headers = headers.copy()
-        post_headers.update({
+        # 4. AJAX POST (Must look like an XHR request)
+        ajax_url = f"{default_domain.rstrip('/')}/wp-admin/admin-ajax.php"
+        ajax_headers = COMMON_HEADERS.copy()
+        ajax_headers.update({
+            "X-Requested-With": "XMLHttpRequest",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
             "Referer": target_url,
-            "Origin": default_domain,
-            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+            "Origin": default_domain
         })
 
-        post_res = session.post(ajax_url, data=payload, headers=post_headers, timeout=20)
+        # POST requests usually need to be routed through proxy too if 403 is persistent
+        post_res = session.post(ajax_url, data=payload, headers=ajax_headers, timeout=15)
         
-        if "application/json" not in post_res.headers.get("Content-Type", ""):
-            response_data["error"] = "AJAX blocked by firewall."
-            return response_data
+        # If AJAX is blocked, try routing the POST via Proxy as well
+        if post_res.status_code == 403:
+            proxy_ajax = f"{PROXY_API}?url={ajax_url}&type=post"
+            post_res = session.post(proxy_ajax, data=payload, headers=ajax_headers)
 
-        response_json = post_res.json()
-        embed_url = response_json.get("embed_url")
+        res_json = post_res.json()
+        embed_url = res_json.get("embed_url")
 
-        if not embed_url:
-            response_data["error"] = "Embed URL missing in response."
-            return response_data
-
-        # 5. Process Providers (Streamwish, P2P, etc.)
+        # 5. Handle Providers
         media_urls = []
-        if response_json.get("type") == "iframe":
-            # Using your existing gdmirrorbot logic
+        if res_json.get("type") == "iframe":
+            # Pass to your updated gdmirrorbot (which now handles movies vs tv)
             embed_data = gdmirrorbot.real_extract(embed_url, request)
             
             if embed_data.get("status") == "success":
-                e_urls = embed_data.get("embed_urls", {})
-                for key, val in e_urls.items():
-                    if not val: continue
+                for key, val in embed_data.get("embed_urls", {}).items():
                     l_key = key.lower()
-                    
                     if any(x in l_key for x in ["streamwish", "wish", "filelions"]):
-                        media_urls.append({"provider": key, "result": streamwish.real_extract(val, request)})
+                        media_urls.append({"name": key, "url": val, "handler": "streamwish"})
                     elif "p2p" in l_key:
-                        media_urls.append({"provider": key, "result": streamp2p.real_extract(val, request)})
+                        media_urls.append({"name": key, "url": val, "handler": "streamp2p"})
+        
+        elif "iframe" in embed_url: # Case for dtshcode
+            match = re.search(r'src=["\'](.*?)["\']', embed_url)
+            if match:
+                media_urls.append({"name": "Primary", "url": match.group(1), "handler": "streamwish"})
 
-        elif response_json.get("type") == "dtshcode":
-            sub_soup = BeautifulSoup(embed_url, "html.parser")
-            iframe = sub_soup.select_one("iframe")
-            if iframe and iframe.get("src"):
-                media_urls.append({"provider": "streamwish", "result": streamwish.real_extract(iframe["src"], request)})
-
-        # Final Response
         if not media_urls:
-            response_data["error"] = "No playable media found."
+            response_data["error"] = "No playable servers found after AJAX resolution."
             return response_data
 
         response_data.update({
-            "status": "success",
-            "status_code": 200,
+            "status": "success", "status_code": 200,
             "servers": media_urls
         })
 
     except Exception as e:
-        response_data["error"] = f"Extraction failed: {str(e)}"
+        response_data["error"] = f"Critical Error: {str(e)}"
 
     return response_data
