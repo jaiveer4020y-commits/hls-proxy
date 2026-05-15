@@ -1,5 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
+from urllib.parse import quote
 
 from . import streamwish, gdmirrorbot, streamp2p, site_domains
 from . import utils as u
@@ -15,6 +16,8 @@ headers = {
     "Connection": "Keep-Alive",
     "Accept-Encoding": "gzip",
 }
+
+WORKINGG_PROXY = "https://workingg.vercel.app/api/proxy?source=2&url="
 
 
 # =========================================================
@@ -57,15 +60,13 @@ def real_extract(url, request):
         try:
 
             init_res = session.get(
-                domain,
+                f"{WORKINGG_PROXY}{quote(domain)}",
                 headers=headers,
                 timeout=15,
                 allow_redirects=True
             )
 
-            default_domain = u.get_domain(
-                init_res.url
-            )
+            default_domain = u.get_domain(url)
 
             response_data["debug"].append({
                 "step": "resolve_domain",
@@ -82,7 +83,7 @@ def real_extract(url, request):
             return response_data
 
         # =================================================
-        # Fetch page
+        # Fetch page via Workingg proxy
         # =================================================
 
         target_url = url.replace(
@@ -94,8 +95,10 @@ def real_extract(url, request):
         page_headers["Host"] = default_domain.replace("https://", "").replace("http://", "").rstrip("/")
         page_headers["Referer"] = default_domain
 
+        proxied_url = f"{WORKINGG_PROXY}{quote(target_url)}"
+
         response = session.get(
-            target_url,
+            proxied_url,
             headers=page_headers,
             timeout=20
         )
@@ -168,7 +171,7 @@ def real_extract(url, request):
         })
 
         # =================================================
-        # AJAX POST
+        # AJAX POST via Workingg proxy
         # =================================================
 
         ajax_url = (
@@ -192,8 +195,10 @@ def real_extract(url, request):
             "Content-Type": "application/x-www-form-urlencoded",
         })
 
+        proxied_ajax_url = f"{WORKINGG_PROXY}{quote(ajax_url)}"
+
         post_res = session.post(
-            ajax_url,
+            proxied_ajax_url,
             data=payload,
             headers=post_headers,
             timeout=20
