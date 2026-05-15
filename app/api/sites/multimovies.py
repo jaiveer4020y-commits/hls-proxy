@@ -184,19 +184,24 @@ def real_extract(url, request):
 
         payload = {
             "action": "doo_player_ajax",
-            "post":   post_id,
-            "nume":   data_nume,
-            "type":   data_type
+            "post": post_id,
+            "nume": data_nume,
+            "type": data_type
         }
 
-        post_res = session.get(
-            GOOGLE_PROXY,
-            params={
-                "type":     "post",
-                "url":      ajax_url,
-                **{f"data_{k}": v for k, v in payload.items()}
-            },
-            headers=headers,
+        post_headers = headers.copy()
+
+        post_headers.update({
+            "Host": default_domain.replace("https://", "").replace("http://", "").rstrip("/"),
+            "Referer": target_url,
+            "X-Requested-With": "XMLHttpRequest",
+            "Content-Type": "application/x-www-form-urlencoded",
+        })
+
+        post_res = session.post(
+            ajax_url,
+            data=payload,
+            headers=post_headers,
             timeout=20
         )
 
@@ -240,6 +245,7 @@ def real_extract(url, request):
             )
 
             return response_data
+
 
         # =================================================
         # Get embed URL
