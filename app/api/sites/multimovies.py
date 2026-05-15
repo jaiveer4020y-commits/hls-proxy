@@ -1,4 +1,4 @@
-from curl_cffi import requests
+import requests
 from bs4 import BeautifulSoup
 
 from . import streamwish, gdmirrorbot, streamp2p, site_domains
@@ -6,32 +6,14 @@ from . import utils as u
 
 
 # =========================================================
-# HEADERS (Full Stealth Configuration)
+# HEADERS (Minimal — matches CloudStream app, no Cloudflare)
 # =========================================================
 
 headers = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/128.0.0.0 Safari/537.36"
-    ),
-    "Accept": "application/json, text/javascript, */*; q=0.01",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br, zstd",
-    "X-Requested-With": "XMLHttpRequest",
-    "Connection": "keep-alive",
-    "Referer": "https://multimovies.fyi/",
-    # Client Hints (Crucial for bypass)
-    "sec-ch-ua": '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"Windows"',
-    # Fetch Metadata (Proves request origin)
-    "Sec-Fetch-Dest": "empty",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Site": "same-origin",
-    "DNT": "1", # Do Not Track
-    "Pragma": "no-cache",
-    "Cache-Control": "no-cache",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+    "Cache-Control": "max-age=0",
+    "Connection": "Keep-Alive",
+    "Accept-Encoding": "gzip",
 }
 
 
@@ -39,7 +21,7 @@ headers = {
 # SESSION
 # =========================================================
 
-session = requests.Session(impersonate="chrome124")
+session = requests.Session()
 
 
 # =========================================================
@@ -109,11 +91,8 @@ def real_extract(url, request):
         )
 
         page_headers = headers.copy()
-
-        page_headers.update({
-            "Referer": default_domain,
-            "Origin": default_domain
-        })
+        page_headers["Host"] = default_domain.replace("https://", "").replace("http://", "").rstrip("/")
+        page_headers["Referer"] = default_domain
 
         response = session.get(
             target_url,
@@ -207,11 +186,10 @@ def real_extract(url, request):
         post_headers = headers.copy()
 
         post_headers.update({
+            "Host": default_domain.replace("https://", "").replace("http://", "").rstrip("/"),
             "Referer": target_url,
-            "Origin": default_domain,
-            "Sec-Fetch-Site": "same-origin",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Dest": "empty"
+            "X-Requested-With": "XMLHttpRequest",
+            "Content-Type": "application/x-www-form-urlencoded",
         })
 
         post_res = session.post(
