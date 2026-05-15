@@ -7,7 +7,7 @@ from . import utils as u
 
 
 # =========================================================
-# HEADERS (Minimal — matches CloudStream app, no Cloudflare)
+# HEADERS
 # =========================================================
 
 headers = {
@@ -17,7 +17,8 @@ headers = {
     "Accept-Encoding": "gzip",
 }
 
-WORKINGG_PROXY = "https://workingg.vercel.app/api/proxy?source=2&url="
+FETCH_PROXY  = "https://script.google.com/macros/s/AKfycbzwlgaq7IkI4NkLokhTcL7zxf-aiD9GZB0S4grtOuNofuw-Yzr3pmKX_6uhit4IQx8Y/exec"
+GOOGLE_PROXY = "https://script.google.com/macros/s/AKfycbz54yydg-bHZPUB9URu9WxcAQmtD25IV5bREsfGf-6MX4sjqlOn4sPCzeVSgLTaKMtc3Q/exec"
 
 
 # =========================================================
@@ -60,13 +61,17 @@ def real_extract(url, request):
         try:
 
             init_res = session.get(
-                f"{WORKINGG_PROXY}{quote(domain)}",
+                FETCH_PROXY,
+                params={
+                    "type": "fetch",
+                    "url": domain
+                },
                 headers=headers,
                 timeout=15,
                 allow_redirects=True
             )
 
-            default_domain = u.get_domain(url)
+            default_domain = domain
 
             response_data["debug"].append({
                 "step": "resolve_domain",
@@ -83,7 +88,7 @@ def real_extract(url, request):
             return response_data
 
         # =================================================
-        # Fetch page via Workingg proxy
+        # Fetch page via Google proxy
         # =================================================
 
         target_url = url.replace(
@@ -91,15 +96,13 @@ def real_extract(url, request):
             default_domain
         )
 
-        page_headers = headers.copy()
-        page_headers["Host"] = default_domain.replace("https://", "").replace("http://", "").rstrip("/")
-        page_headers["Referer"] = default_domain
-
-        proxied_url = f"{WORKINGG_PROXY}{quote(target_url)}"
-
         response = session.get(
-            proxied_url,
-            headers=page_headers,
+            FETCH_PROXY,
+            params={
+                "type": "fetch",
+                "url": target_url
+            },
+            headers=headers,
             timeout=20
         )
 
@@ -147,7 +150,7 @@ def real_extract(url, request):
         # Extract player data
         # =================================================
 
-        post_id = player_element.get("data-post")
+        post_id   = player_element.get("data-post")
         data_type = player_element.get("data-type")
         data_nume = player_element.get("data-nume")
 
@@ -171,7 +174,7 @@ def real_extract(url, request):
         })
 
         # =================================================
-        # AJAX POST via Workingg proxy
+        # AJAX POST via Google proxy
         # =================================================
 
         ajax_url = (
@@ -181,26 +184,19 @@ def real_extract(url, request):
 
         payload = {
             "action": "doo_player_ajax",
-            "post": post_id,
-            "nume": data_nume,
-            "type": data_type
+            "post":   post_id,
+            "nume":   data_nume,
+            "type":   data_type
         }
 
-        post_headers = headers.copy()
-
-        post_headers.update({
-            "Host": default_domain.replace("https://", "").replace("http://", "").rstrip("/"),
-            "Referer": target_url,
-            "X-Requested-With": "XMLHttpRequest",
-            "Content-Type": "application/x-www-form-urlencoded",
-        })
-
-        proxied_ajax_url = f"{WORKINGG_PROXY}{quote(ajax_url)}"
-
-        post_res = session.post(
-            proxied_ajax_url,
-            data=payload,
-            headers=post_headers,
+        post_res = session.get(
+            GOOGLE_PROXY,
+            params={
+                "type":     "post",
+                "url":      ajax_url,
+                **{f"data_{k}": v for k, v in payload.items()}
+            },
+            headers=headers,
             timeout=20
         )
 
