@@ -1,4 +1,4 @@
-import requests
+from curl_cffi import requests
 from bs4 import BeautifulSoup
 
 from . import streamwish, gdmirrorbot, streamp2p, site_domains
@@ -39,7 +39,7 @@ headers = {
 # SESSION
 # =========================================================
 
-session = requests.Session()
+session = requests.Session(impersonate="chrome124")
 
 
 # =========================================================
