@@ -119,10 +119,9 @@ def _parse_embed_url(url):
             )
 
         media_type = "tv"
-
-        media_id = path_parts[2]
-        season = path_parts[3]
-        episode = path_parts[4]
+        media_id   = path_parts[2]
+        season     = path_parts[3]
+        episode    = path_parts[4]
 
     # =====================================================
     # MOVIE
@@ -131,11 +130,9 @@ def _parse_embed_url(url):
     elif embed_type == "movie":
 
         media_type = "movie"
-
-        media_id = path_parts[2]
-
-        season = None
-        episode = None
+        media_id   = path_parts[2]
+        season     = None
+        episode    = None
 
     else:
 
@@ -155,10 +152,10 @@ def _parse_embed_url(url):
 
     return {
         "media_type": media_type,
-        "media_id": media_id,
-        "season": season,
-        "episode": episode,
-        "key": key
+        "media_id":   media_id,
+        "season":     season,
+        "episode":    episode,
+        "key":        key
     }
 
 
@@ -179,11 +176,11 @@ def _fetch_fileslug(parsed_data):
         response = session.get(
             MYSERIES_PROXY,
             params={
-                "type": "tv",
+                "type":   "tv",
                 "tmdbid": parsed_data["media_id"],
                 "season": parsed_data["season"],
                 "epname": parsed_data["episode"],
-                "key": parsed_data["key"]
+                "key":    parsed_data["key"]
             },
             headers=headers,
             timeout=20
@@ -198,9 +195,9 @@ def _fetch_fileslug(parsed_data):
         response = session.get(
             MYSERIES_PROXY,
             params={
-                "type": "movie",
+                "type":   "movie",
                 "imdbid": parsed_data["media_id"],
-                "key": parsed_data["key"]
+                "key":    parsed_data["key"]
             },
             headers=headers,
             timeout=20
@@ -227,6 +224,7 @@ def _fetch_fileslug(parsed_data):
             "API returned empty data"
         )
 
+    # Always use first fileslug
     fileslug = items[0].get("fileslug")
 
     if not fileslug:
@@ -247,7 +245,7 @@ def _fetch_embed_data(fileslug):
     response = session.get(
         PROXY_API,
         params={
-            "type": "post",
+            "type":     "post",
             "post_sid": fileslug,
             "url": (
                 "https://pro.iqsmartgames.com/"
@@ -330,10 +328,10 @@ def _build_iframe_urls(embed_data):
 def real_extract(url, request):
 
     response_data = {
-        "status": "error",
+        "status":      "error",
         "status_code": 400,
-        "error": None,
-        "embed_urls": {}
+        "error":       None,
+        "embed_urls":  {}
     }
 
     try:
@@ -344,9 +342,7 @@ def real_extract(url, request):
 
         if _is_direct_sid(url):
 
-            fileslug = _extract_direct_sid(
-                url
-            )
+            fileslug = _extract_direct_sid(url)
 
         # =================================================
         # NEW MODERN FORMAT
@@ -354,29 +350,21 @@ def real_extract(url, request):
 
         else:
 
-            parsed_data = _parse_embed_url(
-                url
-            )
+            parsed_data = _parse_embed_url(url)
 
-            fileslug = _fetch_fileslug(
-                parsed_data
-            )
+            fileslug = _fetch_fileslug(parsed_data)
 
         # =================================================
         # FETCH EMBED DATA
         # =================================================
 
-        embed_data = _fetch_embed_data(
-            fileslug
-        )
+        embed_data = _fetch_embed_data(fileslug)
 
         # =================================================
         # BUILD STREAM URLS
         # =================================================
 
-        iframe_urls = _build_iframe_urls(
-            embed_data
-        )
+        iframe_urls = _build_iframe_urls(embed_data)
 
         if not iframe_urls:
 
@@ -390,10 +378,10 @@ def real_extract(url, request):
         # SUCCESS
         # =================================================
 
-        response_data["status"] = "success"
+        response_data["status"]      = "success"
         response_data["status_code"] = 200
-        response_data["error"] = None
-        response_data["embed_urls"] = iframe_urls
+        response_data["error"]       = None
+        response_data["embed_urls"]  = iframe_urls
 
     # =====================================================
     # TIMEOUT
