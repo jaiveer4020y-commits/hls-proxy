@@ -309,27 +309,10 @@ def real_extract(url, request):
                     # STREAMWISH / FILELIONS
                     # =====================================
 
-                    if any(
-                        x in lower_key
-                        for x in [
-                            "streamwish",
-                            "sw",
-                            "wish",
-                            "filelions",
-                            "lion",
-                            "dwish"
-                        ]
-                    ):
-
-                        sw_res = streamwish.real_extract(
-                            value,
-                            request
-                        )
-
-                        media_urls.append({
-                            "provider": key,
-                            "result": sw_res
-                        })
+                    # Add to your loop in real_extract()
+elif "streamhg" in lower_key or "hg" in lower_key:
+    hg_res = streamhg.real_extract(value, request)  # You'd need to create this extractor
+    media_urls.append({"provider": key, "result": hg_res})
 
                     # =====================================
                     # STREAMP2P
