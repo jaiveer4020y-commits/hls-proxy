@@ -1,5 +1,3 @@
-import traceback
-
 import requests
 from bs4 import BeautifulSoup
 
@@ -18,16 +16,8 @@ headers = {
     "Accept-Encoding": "gzip",
 }
 
-# Page fetch proxy (GET)
 FETCH_PROXY = "https://script.google.com/macros/s/AKfycbzwlgaq7IkI4NkLokhTcL7zxf-aiD9GZB0S4grtOuNofuw-Yzr3pmKX_6uhit4IQx8Y/exec"
-
-# AJAX POST proxy (POST)
 AJAX_PROXY = "https://script.google.com/macros/s/AKfycbxYpDKI--p7xkeOC4NT2R8rN26N6H5H6_EuQwkrAjNIliRcxf55ByXOs1RGHUK-l5PuFw/exec"
-
-
-# =========================================================
-# SESSION
-# =========================================================
 
 session = requests.Session()
 
@@ -47,11 +37,7 @@ def real_extract(url, request):
     }
 
     if not url:
-
-        response_data["error"] = (
-            "No URL provided to extractor."
-        )
-
+        response_data["error"] = "No URL provided to extractor."
         return response_data
 
     try:
@@ -61,40 +47,23 @@ def real_extract(url, request):
         # =================================================
 
         domain = u.get_domain(url)
+        default_domain = domain
 
-        try:
-
-            default_domain = domain
-
-            response_data["debug"].append({
-                "step": "resolve_domain",
-                "status": "success",
-                "default_domain": default_domain
-            })
-
-        except Exception as e:
-
-            response_data["error"] = (
-                f"Could not resolve base domain: {str(e)}"
-            )
-
-            return response_data
+        response_data["debug"].append({
+            "step": "resolve_domain",
+            "status": "success",
+            "default_domain": default_domain
+        })
 
         # =================================================
-        # Fetch page via Google fetch proxy
+        # Fetch page
         # =================================================
 
-        target_url = url.replace(
-            domain,
-            default_domain
-        )
+        target_url = url.replace(domain, default_domain)
 
         response = session.get(
             FETCH_PROXY,
-            params={
-                "type": "fetch",
-                "url":  target_url
-            },
+            params={"type": "fetch", "url": target_url},
             headers=headers,
             timeout=20
         )
@@ -111,27 +80,15 @@ def real_extract(url, request):
         # Parse HTML
         # =================================================
 
-        soup = BeautifulSoup(
-            response.text,
-            "html.parser"
-        )
+        soup = BeautifulSoup(response.text, "html.parser")
 
-        player_element = soup.select_one(
-            "#player-option-1"
-        )
-
-        # fallback selector
-        if not player_element:
-            player_element = soup.select_one(
-                "[data-post]"
-            )
+        player_element = soup.select_one("#player-option-1")
 
         if not player_element:
+            player_element = soup.select_one("[data-post]")
 
-            response_data["error"] = (
-                "Player element not found on page."
-            )
-
+        if not player_element:
+            response_data["error"] = "Player element not found on page."
             return response_data
 
         response_data["debug"].append({
@@ -148,14 +105,12 @@ def real_extract(url, request):
         data_nume = player_element.get("data-nume")
 
         if not all([post_id, data_type, data_nume]):
-
             response_data["error"] = (
                 f"Missing data attributes: "
                 f"post={post_id}, "
                 f"type={data_type}, "
                 f"nume={data_nume}"
             )
-
             return response_data
 
         response_data["debug"].append({
@@ -167,7 +122,7 @@ def real_extract(url, request):
         })
 
         # =================================================
-        # AJAX POST via Google AJAX proxy
+        # AJAX POST
         # =================================================
 
         ajax_url = (
@@ -188,31 +143,20 @@ def real_extract(url, request):
             timeout=20
         )
 
-        content_type = post_res.headers.get(
-            "Content-Type",
-            ""
-        )
+        content_type = post_res.headers.get("Content-Type", "")
 
         if "application/json" not in content_type:
-
             response_data["error"] = (
                 "Site blocked request. "
                 f"Expected JSON but got {content_type}. "
                 f"Preview: {post_res.text[:200]}"
             )
-
             return response_data
 
         try:
-
             response_json = post_res.json()
-
         except Exception:
-
-            response_data["error"] = (
-                "Server returned invalid JSON."
-            )
-
+            response_data["error"] = "Server returned invalid JSON."
             return response_data
 
         response_data["debug"].append({
@@ -222,11 +166,7 @@ def real_extract(url, request):
         })
 
         if not response_json:
-
-            response_data["error"] = (
-                "Empty JSON response."
-            )
-
+            response_data["error"] = "Empty JSON response."
             return response_data
 
         # =================================================
@@ -236,11 +176,7 @@ def real_extract(url, request):
         embed_url = response_json.get("embed_url")
 
         if not embed_url:
-
-            response_data["error"] = (
-                "embed_url missing in AJAX response."
-            )
-
+            response_data["error"] = "embed_url missing in AJAX response."
             return response_data
 
         response_data["debug"].append({
@@ -257,10 +193,7 @@ def real_extract(url, request):
 
         if response_json.get("type") == "iframe":
 
-            embed_data = gdmirrorbot.real_extract(
-                embed_url,
-                request
-            )
+            embed_data = gdmirrorbot.real_extract(embed_url, request)
 
             response_data["debug"].append({
                 "step": "gdmirrorbot",
@@ -268,129 +201,71 @@ def real_extract(url, request):
             })
 
             if not isinstance(embed_data, dict):
-
-                response_data["error"] = (
-                    "gdmirrorbot returned invalid response."
-                )
-
+                response_data["error"] = "gdmirrorbot returned invalid response."
                 return response_data
 
             if embed_data.get("status") == "error":
-
                 response_data["error"] = (
                     embed_data.get("error")
                     or "gdmirrorbot extractor failed."
                 )
-
                 return response_data
 
-            embed_urls = embed_data.get(
-                "embed_urls",
-                {}
-            )
+            embed_urls = embed_data.get("embed_urls", {})
 
             response_data["debug"].append({
                 "step": "embed_urls",
                 "embed_urls": embed_urls
             })
 
-           # =============================================
-# Loop providers
-# =============================================
+            # =============================================
+            # StreamHG — uses streamwish extractor
+            # =============================================
 
-for key, value in embed_urls.items():
-
-    if not value:
-        continue
-
-    lower_key = key.lower()
-
-    try:
-
-        # =====================================
-        # STREAMWISH / FILELIONS / STREAMHG
-        # =====================================
-
-        if any(
-            x in lower_key
-            for x in [
-                "streamwish",
-                "sw",
-                "wish",
-                "filelions",
-                "lion",
-                "dwish",
-                "streamhg",
-                "shg",
-                "hg"
-            ]
-        ):
-
-            try:
-                sw_res = streamwish.real_extract(
-                    value,
-                    request
-                )
-            except Exception as e:
-                sw_res = {
-                    "status": "error",
-                    "status_code": 500,
-                    "error": str(e),
-                    "tag": "streamwish",
-                    "headers": None,
-                    "streaming_url": None
-                }
-
-            media_urls.append({
-                "provider": key,
-                "result": sw_res
-            })
-
-        # =====================================
-        # STREAMP2P
-        # =====================================
-
-        elif "p2p" in lower_key:
-
-            sp2p_res = streamp2p.real_extract(
-                value,
-                request
+            streamhg_url = (
+                embed_urls.get("StreamHG")
+                or embed_urls.get("streamhg")
             )
 
-            media_urls.append({
-                "provider": key,
-                "result": sp2p_res
-            })
-
-    except Exception as e:
-
-        media_urls.append({
-            "provider": key,
-            "status": "error",
-            "error": str(e)
-        })
-
-
-                    # =====================================
-                    # STREAMP2P
-                    # =====================================
-
-                    elif "p2p" in lower_key:
-
-                        sp2p_res = streamp2p.real_extract(
-                            value,
-                            request
-                        )
-
-                        media_urls.append({
-                            "provider": key,
-                            "result": sp2p_res
-                        })
-
-                except Exception as e:
-
+            if streamhg_url:
+                try:
+                    shg_res = streamwish.real_extract(
+                        streamhg_url,
+                        request
+                    )
                     media_urls.append({
-                        "provider": key,
+                        "provider": "StreamHG",
+                        "result": shg_res
+                    })
+                except Exception as e:
+                    media_urls.append({
+                        "provider": "StreamHG",
+                        "status": "error",
+                        "error": str(e)
+                    })
+
+            # =============================================
+            # StreamP2p
+            # =============================================
+
+            streamp2p_url = (
+                embed_urls.get("StreamP2p")
+                or embed_urls.get("streamp2p")
+            )
+
+            if streamp2p_url:
+                try:
+                    sp2p_res = streamp2p.real_extract(
+                        streamp2p_url,
+                        request
+                    )
+                    media_urls.append({
+                        "provider": "StreamP2p",
+                        "result": sp2p_res
+                    })
+                except Exception as e:
+                    media_urls.append({
+                        "provider": "StreamP2p",
                         "status": "error",
                         "error": str(e)
                     })
@@ -401,33 +276,27 @@ for key, value in embed_urls.items():
 
         elif response_json.get("type") == "dtshcode":
 
-            sub_soup = BeautifulSoup(
-                embed_url,
-                "html.parser"
-            )
-
+            sub_soup = BeautifulSoup(embed_url, "html.parser")
             iframe = sub_soup.select_one("iframe")
 
             if iframe and iframe.get("src"):
-
-                iframe_src = iframe["src"]
-
-                sw_res = streamwish.real_extract(
-                    iframe_src,
-                    request
-                )
-
-                media_urls.append({
-                    "provider": "streamwish",
-                    "result": sw_res
-                })
-
+                try:
+                    sw_res = streamwish.real_extract(
+                        iframe["src"],
+                        request
+                    )
+                    media_urls.append({
+                        "provider": "streamwish",
+                        "result": sw_res
+                    })
+                except Exception as e:
+                    media_urls.append({
+                        "provider": "streamwish",
+                        "status": "error",
+                        "error": str(e)
+                    })
             else:
-
-                response_data["error"] = (
-                    "Could not find iframe inside dtshcode."
-                )
-
+                response_data["error"] = "Could not find iframe inside dtshcode."
                 return response_data
 
         # =================================================
@@ -435,11 +304,8 @@ for key, value in embed_urls.items():
         # =================================================
 
         if not media_urls:
-
             response_data["error"] = {
-                "message": (
-                    "No playable media URLs found"
-                ),
+                "message": "No playable media URLs found",
                 "embed_url": embed_url,
                 "response_json": response_json,
                 "embed_data": (
@@ -448,7 +314,6 @@ for key, value in embed_urls.items():
                     else None
                 )
             }
-
             return response_data
 
         # =================================================
@@ -462,40 +327,13 @@ for key, value in embed_urls.items():
             "servers": media_urls
         })
 
-    # =====================================================
-    # TIMEOUT
-    # =====================================================
-
     except requests.exceptions.Timeout:
-
-        response_data["error"] = (
-            "The request timed out."
-        )
-
-    # =====================================================
-    # REQUEST ERROR
-    # =====================================================
+        response_data["error"] = "The request timed out."
 
     except requests.exceptions.RequestException as e:
-
-        response_data["error"] = (
-            f"Network Error: {str(e)}"
-        )
-
-    # =====================================================
-    # GENERAL ERROR
-    # =====================================================
+        response_data["error"] = f"Network Error: {str(e)}"
 
     except Exception as e:
-
-        response_data["error"] = (
-            f"Unexpected Error: {str(e)}"
-        )
+        response_data["error"] = f"Unexpected Error: {str(e)}"
 
     return response_data
-    except Exception as e:
-    response_data["error"] = {
-        "message": str(e),
-        "traceback": traceback.format_exc()
-    }
-
