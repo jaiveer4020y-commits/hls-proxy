@@ -1,3 +1,5 @@
+import traceback
+
 import requests
 from bs4 import BeautifulSoup
 
@@ -491,3 +493,9 @@ for key, value in embed_urls.items():
         )
 
     return response_data
+    except Exception as e:
+    response_data["error"] = {
+        "message": str(e),
+        "traceback": traceback.format_exc()
+    }
+
