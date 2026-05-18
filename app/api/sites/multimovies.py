@@ -313,95 +313,89 @@ def real_extract(url, request):
                 response_data["error"] = f"gdmirrorbot crashed: {str(e)}\n{traceback.format_exc()}"
                 return response_data
             
-            # =============================================
-            # Loop providers
-            # =============================================
-            
-            for key, value in embed_urls.items():
-                
-                if not value:
-                    continue
-                
-                lower_key = key.lower()
-                
-                try:
-                    
-                    # =====================================
-                    # STREAMWISH / FILELIONS
-                    # =====================================
-                    
-                    # In your main extractor's provider loop, change this section:
+            ## =============================================
+# Loop providers
+# =============================================
 
-# =====================================
-# STREAMWISH / FILELIONS / STREAMHG
-# =====================================
-
-if any(x in lower_key for x in ["streamwish", "sw", "wish", "filelions", "lion", "dwish", "streamhg", "hg"]):
+for key, value in embed_urls.items():
     
-    if not streamwish or not hasattr(streamwish, 'real_extract'):
-        media_urls.append({
-            "provider": key,
-            "status": "error",
-            "error": "StreamWish module not available"
-        })
-    else:
-        try:
-            # Use streamwish extractor for StreamHG too
-            sw_res = streamwish.real_extract(value, request)
-            media_urls.append({
-                "provider": key,
-                "result": sw_res
-            })
-        except Exception as e:
-            media_urls.append({
-                "provider": key,
-                "status": "error",
-                "error": f"StreamWish crashed for {key}: {str(e)}"
-            })
-                    
-                    # =====================================
-                    # STREAMP2P
-                    # =====================================
-                    
-                    elif "p2p" in lower_key:
-                        
-                        if not streamp2p or not hasattr(streamp2p, 'real_extract'):
-                            media_urls.append({
-                                "provider": key,
-                                "status": "error",
-                                "error": "StreamP2P module not available"
-                            })
-                        else:
-                            try:
-                                sp2p_res = streamp2p.real_extract(value, request)
-                                media_urls.append({
-                                    "provider": key,
-                                    "result": sp2p_res
-                                })
-                            except Exception as e:
-                                media_urls.append({
-                                    "provider": key,
-                                    "status": "error",
-                                    "error": f"StreamP2P crashed: {str(e)}\n{traceback.format_exc()}"
-                                })
-                    
-                    # =====================================
-                    # UNKNOWN PROVIDERS
-                    # =====================================
-                    
-                    else:
-                        media_urls.append({
-                            "provider": key,
-                            "status": "error",
-                            "error": f"No extractor available for provider: {key}"
-                        })
-                        
+    if not value:
+        continue
+    
+    lower_key = key.lower()
+    
+    try:
+        
+        # =====================================
+        # STREAMWISH / FILELIONS / STREAMHG
+        # =====================================
+        
+        if any(x in lower_key for x in ["streamwish", "sw", "wish", "filelions", "lion", "dwish", "streamhg", "hg"]):
+            
+            if not streamwish or not hasattr(streamwish, 'real_extract'):
+                media_urls.append({
+                    "provider": key,
+                    "status": "error",
+                    "error": "StreamWish module not available"
+                })
+            else:
+                try:
+                    # Use streamwish extractor for StreamHG too
+                    sw_res = streamwish.real_extract(value, request)
+                    media_urls.append({
+                        "provider": key,
+                        "result": sw_res
+                    })
                 except Exception as e:
                     media_urls.append({
                         "provider": key,
                         "status": "error",
-                        "error": f"Unexpected error in provider loop: {str(e)}"
+                        "error": f"StreamWish crashed for {key}: {str(e)}"
                     })
+        
+        # =====================================
+        # STREAMP2P
+        # =====================================
+        
+        elif "p2p" in lower_key:
+            
+            if not streamp2p or not hasattr(streamp2p, 'real_extract'):
+                media_urls.append({
+                    "provider": key,
+                    "status": "error",
+                    "error": "StreamP2P module not available"
+                })
+            else:
+                try:
+                    sp2p_res = streamp2p.real_extract(value, request)
+                    media_urls.append({
+                        "provider": key,
+                        "result": sp2p_res
+                    })
+                except Exception as e:
+                    media_urls.append({
+                        "provider": key,
+                        "status": "error",
+                        "error": f"StreamP2P crashed: {str(e)}"
+                    })
+        
+        # =====================================
+        # UNKNOWN PROVIDERS
+        # =====================================
+        
+        else:
+            media_urls.append({
+                "provider": key,
+                "status": "error",
+                "error": f"No extractor available for provider: {key}"
+            })
+            
+    except Exception as e:
+        media_urls.append({
+            "provider": key,
+            "status": "error",
+            "error": f"Unexpected error: {str(e)}"
+        })
         
         # =================================================
         # HANDLE DTSHCODE
