@@ -324,10 +324,20 @@ for key, value in embed_urls.items():
             ]
         ):
 
-            sw_res = streamwish.real_extract(
-                value,
-                request
-            )
+            try:
+                sw_res = streamwish.real_extract(
+                    value,
+                    request
+                )
+            except Exception as e:
+                sw_res = {
+                    "status": "error",
+                    "status_code": 500,
+                    "error": str(e),
+                    "tag": "streamwish",
+                    "headers": None,
+                    "streaming_url": None
+                }
 
             media_urls.append({
                 "provider": key,
