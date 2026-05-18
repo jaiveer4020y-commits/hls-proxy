@@ -1,79 +1,115 @@
+# streamwish.py - No Django dependencies
 import requests
-from bs4 import BeautifulSoup
 import re
-from django.http import JsonResponse
-import json
 import ast
-from urllib.parse import quote, unquote
-from django.contrib.sites.shortcuts import get_current_site
-from . import site_domains
+from bs4 import BeautifulSoup
 
-# Configuration
 TAG = 'streamwish'
-default_domain = site_domains.get_domain('streamwish')
-multimovies_domain = site_domains.get_domain('multimovies')
+multimovies_domain = 'https://multimovies.fyi'
+
 initial_headers = {
     'Referer': multimovies_domain,
-    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"',
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
 }
 
-# Helper Functions
-def get_domain(request):
-    """Returns the base domain of the request."""
-    current_site = get_current_site(request)
-    return f"{request.scheme}://{current_site.domain}"
-
-def to_base_36(n):
-    """Converts a number to base-36 using an iterative approach for efficiency."""
-    return '' if n == 0 else to_base_36(n // 36) + "0123456789abcdefghijklmnopqrstuvwxyz"[n % 36]
-
-response_data = {
-    'status': None,
-    'status_code': None,
-    'error': None,
-    'tag': TAG,
-    'headers': None,
-    'streaming_url': None
-}
-
-#Create session
 session = requests.Session()
 
-qualities= ['144', '240', '360', '480', '720', '1080']
+def to_base_36(n):
+    """Converts a number to base-36"""
+    if n == 0:
+        return ''
+    return to_base_36(n // 36) + "0123456789abcdefghijklmnopqrstuvwxyz"[n % 36]
 
 def real_extract(url, request):
     """Extracts streaming URLs from the given video page."""
-    initial_response = session.get(url, headers=initial_headers).text
-    if "File is no longer" in initial_response:
-        response_data['status'] = 'failed'
+    response_data = {
+        'status': 'error',
+        'status_code': 500,
+        'error': None,
+        'tag': TAG,
+        'headers': None,
+        'streaming_url': None
+    }
+    
+    try:
+        print(f"StreamWish extracting: {url}")
+        
+        # Add timeout to prevent hanging
+        initial_response = session.get(url, headers=initial_headers, timeout=10)
+        initial_response.raise_for_status()
+        
+        response_text = initial_response.text
+        
+        if "File is no longer" in response_text:
+            response_data['status'] = 'failed'
+            response_data['status_code'] = 200
+            response_data['error'] = 'Link Expired!'
+            return response_data
+        
+        # Parse HTML
+        soup = BeautifulSoup(response_text, 'html.parser')
+        
+        # Find packed JavaScript
+        js_code = None
+        for script in soup.find_all('script'):
+            if script.string and "eval(function(p,a,c,k,e,d)" in script.string:
+                js_code = script.string
+                break
+        
+        if not js_code:
+            response_data['error'] = 'No packed JS found'
+            return response_data
+        
+        # Extract and clean the JS code
+        encoded_packed = re.sub(r"eval\(function\([^\)]*\)\{[^\}]*\}\(|.split\('\|'\)\)\)", '', js_code)
+        
+        # Safely evaluate the packed data
+        try:
+            data = ast.literal_eval(encoded_packed)
+        except:
+            response_data['error'] = 'Failed to parse packed data'
+            return response_data
+        
+        if not isinstance(data, (list, tuple)) or len(data) < 4:
+            response_data['error'] = 'Invalid packed data structure'
+            return response_data
+        
+        # Extract values from packed data
+        p = data[0]
+        a = int(data[1])
+        c = int(data[2])
+        k = data[3].split('|')
+        
+        # Replace placeholders with corresponding values
+        for i in range(c):
+            if k[c - i - 1]:
+                pattern = r'\b' + to_base_36(c - i - 1) + r'\b'
+                p = re.sub(pattern, k[c - i - 1], p)
+        
+        # Get Video URL
+        video_match = re.search(r'"hls2":"([^"]+)', p)
+        if not video_match:
+            video_match = re.search(r"hls2:\s*'([^']+)", p)
+        
+        if not video_match:
+            response_data['error'] = 'Video URL not found in unpacked code'
+            return response_data
+        
+        video_url = video_match.group(1)
+        
+        # Prepare response
+        response_data['status'] = 'success'
         response_data['status_code'] = 200
-        response_data['error'] = 'Link Expired!'
-        response_data['streaming_url'] = None
-        return response_data
-    
-    # Fetch and parse the initial response
-    soup = BeautifulSoup(initial_response, 'html.parser')
-    js_code = next((script.string for script in soup.find_all('script') if script.string and "eval(function(p,a,c,k,e,d)" in script.string), "")
-    
-    # Extract and clean the JS code
-    encoded_packed = re.sub(r"eval\(function\([^\)]*\)\{[^\}]*\}\(|.split\('\|'\)\)\)", '', js_code)
-    data = ast.literal_eval(encoded_packed)
-    
-    # Extract values from packed data
-    p, a, c, k = data[0], int(data[1]), int(data[2]), data[3].split('|')
-
-    # Replace placeholders with corresponding values
-    for i in range(c):
-        if k[c - i - 1]:
-            p = re.sub(r'\b' + to_base_36(c - i - 1) + r'\b', k[c - i - 1], p)
-    #Get Video URL
-    video_url = re.search(r'"hls2":"([^"]+)', p).group(1)
-    
-    
-    # Prepare response
-    response_data['status']= 'success'
-    response_data['status_code']= 200
-    response_data['headers'] = initial_headers
-    response_data['streaming_url'] = video_url
+        response_data['headers'] = initial_headers
+        response_data['streaming_url'] = video_url
+        
+    except requests.exceptions.Timeout:
+        response_data['error'] = 'Request timeout'
+    except requests.exceptions.RequestException as e:
+        response_data['error'] = f'Request failed: {str(e)}'
+    except Exception as e:
+        response_data['error'] = f'Extraction failed: {str(e)}'
+        import traceback
+        print(traceback.format_exc())
     
     return response_data
