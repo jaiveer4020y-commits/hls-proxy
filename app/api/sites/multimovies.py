@@ -289,54 +289,71 @@ def real_extract(url, request):
 
             response_data["debug"].append({
                 "step": "embed_urls",
-                "embed_urls": embed_urls
+                "embed_urls": # =============================================
+# Loop providers
+# =============================================
+
+for key, value in embed_urls.items():
+
+    if not value:
+        continue
+
+    lower_key = key.lower()
+
+    try:
+
+        # =====================================
+        # STREAMWISH / FILELIONS
+        # =====================================
+
+        if any(x in lower_key for x in ["streamwish", "sw", "wish", "filelions", "lion", "dwish"]):
+            sw_res = streamwish.real_extract(value, request)
+            media_urls.append({
+                "provider": key,
+                "result": sw_res
             })
 
-            # =============================================
-            # Loop providers
-            # =============================================
+        # =====================================
+        # STREAMHG
+        # =====================================
 
-            for key, value in embed_urls.items():
+        elif "streamhg" in lower_key or "hg" in lower_key:
+            # You need to create streamhg.py first!
+            # For now, skip or handle error
+            media_urls.append({
+                "provider": key,
+                "status": "error",
+                "error": "StreamHG extractor not implemented yet"
+            })
 
-                if not value:
-                    continue
+        # =====================================
+        # STREAMP2P
+        # =====================================
 
-                lower_key = key.lower()
+        elif "p2p" in lower_key:
+            sp2p_res = streamp2p.real_extract(value, request)
+            media_urls.append({
+                "provider": key,
+                "result": sp2p_res
+            })
 
-                try:
+        # =====================================
+        # HANDLE UNKNOWN PROVIDERS
+        # =====================================
 
-                    # =====================================
-                    # STREAMWISH / FILELIONS
-                    # =====================================
+        else:
+            media_urls.append({
+                "provider": key,
+                "status": "error",
+                "error": f"Unknown provider: {key} (no extractor available)"
+            })
 
-                    # Add to your loop in real_extract()
-elif "streamhg" in lower_key or "hg" in lower_key:
-    hg_res = streamhg.real_extract(value, request)  # You'd need to create this extractor
-    media_urls.append({"provider": key, "result": hg_res})
-
-                    # =====================================
-                    # STREAMP2P
-                    # =====================================
-
-                    elif "p2p" in lower_key:
-
-                        sp2p_res = streamp2p.real_extract(
-                            value,
-                            request
-                        )
-
-                        media_urls.append({
-                            "provider": key,
-                            "result": sp2p_res
-                        })
-
-                except Exception as e:
-
-                    media_urls.append({
-                        "provider": key,
-                        "status": "error",
-                        "error": str(e)
-                    })
+    except Exception as e:
+        media_urls.append({
+            "provider": key,
+            "status": "error",
+            "error": str(e)
+        })
 
         # =================================================
         # HANDLE DTSHCODE
