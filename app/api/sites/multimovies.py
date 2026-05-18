@@ -309,27 +309,29 @@ def real_extract(url, request):
                     # STREAMWISH / FILELIONS
                     # =====================================
 
-                    if any(
-                        x in lower_key
-                        for x in [
-                            "streamwish",
-                            "sw",
-                            "wish",
-                            "filelions",
-                            "lion",
-                            "dwish"
-                        ]
-                    ):
-
-                        sw_res = streamwish.real_extract(
-                            value,
-                            request
-                        )
-
-                        media_urls.append({
-                            "provider": key,
-                            "result": sw_res
-                        })
+                    # Add "streamhg" and "hg" to the condition
+        if any(x in lower_key for x in ["streamwish", "sw", "wish", "filelions", "lion", "dwish", "streamhg", "hg"]):
+            
+            if not streamwish or not hasattr(streamwish, 'real_extract'):
+                media_urls.append({
+                    "provider": key,
+                    "status": "error",
+                    "error": "StreamWish module not available"
+                })
+            else:
+                try:
+                    # Use streamwish extractor for StreamHG too
+                    sw_res = streamwish.real_extract(value, request)
+                    media_urls.append({
+                        "provider": key,
+                        "result": sw_res
+                    })
+                except Exception as e:
+                    media_urls.append({
+                        "provider": key,
+                        "status": "error",
+                        "error": f"StreamWish crashed for {key}: {str(e)}"
+                    })
 
                     # =====================================
                     # STREAMP2P
