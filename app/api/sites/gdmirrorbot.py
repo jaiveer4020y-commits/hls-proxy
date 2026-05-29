@@ -13,7 +13,7 @@ default_domain = site_domains.get_domain('gdmirrorbot')
 
 PROXY_API = (
     "https://script.google.com/macros/s/"
-    "AKfycbz54yydg-bHZPUB9URu9WxcAQmtD25IV5bREsfGf-6MX4sjqlOn4sPCzeVSgLTaKMtc3Q/exec"
+    "AKfycbzENdnBk8csHZWGoqhQsHWRNEatFG3SZEyyuAWt6jVGMrd5xE_LPE9qFlhrUvL3emU3fQ/exec"
 )
 
 MYSERIES_PROXY = (
