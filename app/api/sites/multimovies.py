@@ -16,9 +16,11 @@ headers = {
     "Accept-Encoding": "gzip",
 }
 
-FETCH_PROXY = "https://script.google.com/macros/s/AKfycbzwlgaq7IkI4NkLokhTcL7zxf-aiD9GZB0S4grtOuNofuw-Yzr3pmKX_6uhit4IQx8Y/exec"
-AJAX_PROXY = "https://script.google.com/macros/s/AKfycbxYpDKI--p7xkeOC4NT2R8rN26N6H5H6_EuQwkrAjNIliRcxf55ByXOs1RGHUK-l5PuFw/exec"
+# Page fetch proxy (GET)
+FETCH_PROXY = "https://script.google.com/macros/s/AKfycbzENdnBk8csHZWGoqhQsHWRNEatFG3SZEyyuAWt6jVGMrd5xE_LPE9qFlhrUvL3emU3fQ/exec"
 
+# AJAX POST proxy (POST)
+AJAX_PROXY = "https://script.google.com/macros/s/AKfycbxYpDKI--p7xkeOC4NT2R8rN26N6H5H6_EuQwkrAjNIliRcxf55ByXOs1RGHUK-l5PuFw/exec"
 session = requests.Session()
 
 
