@@ -20,7 +20,7 @@ headers = {
 FETCH_PROXY = "https://script.google.com/macros/s/AKfycbwKAH9Dkpa1FEX_edJlJuF-vQgwTUp3kabfFMvQJ3NA6phsCT0L2RauaomopFIZaQlt3g/exec"
 
 # AJAX POST proxy (POST)
-AJAX_PROXY = "https://script.google.com/macros/s/AKfycbxYpDKI--p7xkeOC4NT2R8rN26N6H5H6_EuQwkrAjNIliRcxf55ByXOs1RGHUK-l5PuFw/exec"
+AJAX_PROXY = "https://script.google.com/macros/s/AKfycbw8wVUKZjBoCb_ybTD1q-p4TclYj7PY-SlSDfpHga7Ud7AUXD3i1eZtRowjiNcgPlRDPw/exec"
 session = requests.Session()
 
 
