@@ -17,7 +17,7 @@ headers = {
 }
 
 # Page fetch proxy (GET)
-FETCH_PROXY = "https://script.google.com/macros/s/AKfycbwKAH9Dkpa1FEX_edJlJuF-vQgwTUp3kabfFMvQJ3NA6phsCT0L2RauaomopFIZaQlt3g/exec"
+FETCH_PROXY = "https://script.google.com/macros/s/AKfycbw8wVUKZjBoCb_ybTD1q-p4TclYj7PY-SlSDfpHga7Ud7AUXD3i1eZtRowjiNcgPlRDPw/exec"
 
 # AJAX POST proxy (POST)
 AJAX_PROXY = "https://script.google.com/macros/s/AKfycbw8wVUKZjBoCb_ybTD1q-p4TclYj7PY-SlSDfpHga7Ud7AUXD3i1eZtRowjiNcgPlRDPw/exec"
