@@ -6,7 +6,7 @@ from . import site_domains
 
 
 # Configuration
-TAG = 'streamp2p'
+TAG = 'rpmhub'
 default_domain = site_domains.get_domain(TAG)
 user_agent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Mobile Safari/537.36"
 headers = {
