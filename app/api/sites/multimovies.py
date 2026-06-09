@@ -16,11 +16,10 @@ headers = {
     "Accept-Encoding": "gzip",
 }
 
-# Page fetch proxy (GET)
+# Page fetch + AJAX POST proxy
 FETCH_PROXY = "https://script.google.com/macros/s/AKfycbw8wVUKZjBoCb_ybTD1q-p4TclYj7PY-SlSDfpHga7Ud7AUXD3i1eZtRowjiNcgPlRDPw/exec"
+AJAX_PROXY  = "https://script.google.com/macros/s/AKfycbw8wVUKZjBoCb_ybTD1q-p4TclYj7PY-SlSDfpHga7Ud7AUXD3i1eZtRowjiNcgPlRDPw/exec"
 
-# AJAX POST proxy (POST)
-AJAX_PROXY = "https://script.google.com/macros/s/AKfycbw8wVUKZjBoCb_ybTD1q-p4TclYj7PY-SlSDfpHga7Ud7AUXD3i1eZtRowjiNcgPlRDPw/exec"
 session = requests.Session()
 
 
@@ -221,53 +220,52 @@ def real_extract(url, request):
             })
 
             # =============================================
-            # StreamHG — uses streamwish extractor
+            # StreamHG / EarnVids — streamwish extractor
             # =============================================
 
-            streamhg_url = (
-                embed_urls.get("StreamHG")
-                or embed_urls.get("streamhg")
-            )
-
-            if streamhg_url:
-                try:
-                    shg_res = streamwish.real_extract(
-                        streamhg_url,
-                        request
-                    )
-                    media_urls.append({
-                        "provider": "StreamHG",
-                        "result": shg_res
-                    })
-                except Exception as e:
-                    media_urls.append({
-                        "provider": "StreamHG",
-                        "status": "error",
-                        "error": str(e)
-                    })
+            for sw_key in ["StreamHG", "streamhg", "EarnVids", "earnvids",
+                           "FileMoon", "filemoon", "StreamWish", "streamwish"]:
+                sw_url = embed_urls.get(sw_key)
+                if sw_url:
+                    try:
+                        sw_res = streamwish.real_extract(
+                            sw_url,
+                            request
+                        )
+                        media_urls.append({
+                            "provider": sw_key,
+                            "result": sw_res
+                        })
+                    except Exception as e:
+                        media_urls.append({
+                            "provider": sw_key,
+                            "status": "error",
+                            "error": str(e)
+                        })
 
             # =============================================
-            # RpmShare / UpnShare — uses streamp2p extractor
-# =============================================
+            # RpmShare / UpnShare — streamp2p extractor
+            # =============================================
 
-for p2p_key in ["RpmShare", "UpnShare", "StreamP2p", "rpmhub"]:
-    p2p_url = embed_urls.get(p2p_key)
-    if p2p_url:
-        try:
-            sp2p_res = streamp2p.real_extract(
-                p2p_url,
-                request
-            )
-            media_urls.append({
-                "provider": p2p_key,
-                "result": sp2p_res
-            })
-        except Exception as e:
-            media_urls.append({
-                "provider": p2p_key,
-                "status": "error",
-                "error": str(e)
-            })
+            for p2p_key in ["RpmShare", "UpnShare", "StreamP2p", "rpmhub"]:
+                p2p_url = embed_urls.get(p2p_key)
+                if p2p_url:
+                    try:
+                        sp2p_res = streamp2p.real_extract(
+                            p2p_url,
+                            request
+                        )
+                        media_urls.append({
+                            "provider": p2p_key,
+                            "result": sp2p_res
+                        })
+                    except Exception as e:
+                        media_urls.append({
+                            "provider": p2p_key,
+                            "status": "error",
+                            "error": str(e)
+                        })
+
         # =================================================
         # HANDLE DTSHCODE
         # =================================================
