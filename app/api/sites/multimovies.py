@@ -247,24 +247,31 @@ def real_extract(url, request):
             # RpmShare / UpnShare — streamp2p extractor
             # =============================================
 
-            for p2p_key in ["RpmShare", "UpnShare", "StreamP2p", "rpmhub"]:
-                p2p_url = embed_urls.get(p2p_key)
-                if p2p_url:
-                    try:
-                        sp2p_res = streamp2p.real_extract(
-                            p2p_url,
-                            request
-                        )
-                        media_urls.append({
-                            "provider": p2p_key,
-                            "result": sp2p_res
-                        })
-                    except Exception as e:
-                        media_urls.append({
-                            "provider": p2p_key,
-                            "status": "error",
-                            "error": str(e)
-                        })
+            # =============================================
+# RpmShare / UpnShare — streamp2p extractor
+# =============================================
+
+for p2p_key in ["RpmShare", "UpnShare", "StreamP2p", "rpmhub"]:
+    p2p_url = embed_urls.get(p2p_key)
+    if p2p_url:
+        # Unwrap plyr.technocosmos.surf wrapper if present
+        if "plyr.technocosmos.surf/hlsplayer?url=" in p2p_url:
+            p2p_url = p2p_url.split("?url=")[-1]
+        try:
+            sp2p_res = streamp2p.real_extract(
+                p2p_url,
+                request
+            )
+            media_urls.append({
+                "provider": p2p_key,
+                "result": sp2p_res
+            })
+        except Exception as e:
+            media_urls.append({
+                "provider": p2p_key,
+                "status": "error",
+                "error": str(e)
+            })
 
         # =================================================
         # HANDLE DTSHCODE
