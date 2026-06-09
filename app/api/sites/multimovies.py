@@ -247,31 +247,27 @@ def real_extract(url, request):
                     })
 
             # =============================================
-            # StreamP2p
-            # =============================================
+            # RpmShare / UpnShare — uses streamp2p extractor
+# =============================================
 
-            streamp2p_url = (
-                embed_urls.get("rpmhub")
-                or embed_urls.get("rpmhub")
+for p2p_key in ["RpmShare", "UpnShare", "StreamP2p", "rpmhub"]:
+    p2p_url = embed_urls.get(p2p_key)
+    if p2p_url:
+        try:
+            sp2p_res = streamp2p.real_extract(
+                p2p_url,
+                request
             )
-
-            if streamp2p_url:
-                try:
-                    sp2p_res = streamp2p.real_extract(
-                        streamp2p_url,
-                        request
-                    )
-                    media_urls.append({
-                        "provider": "StreamP2p",
-                        "result": sp2p_res
-                    })
-                except Exception as e:
-                    media_urls.append({
-                        "provider": "StreamP2p",
-                        "status": "error",
-                        "error": str(e)
-                    })
-
+            media_urls.append({
+                "provider": p2p_key,
+                "result": sp2p_res
+            })
+        except Exception as e:
+            media_urls.append({
+                "provider": p2p_key,
+                "status": "error",
+                "error": str(e)
+            })
         # =================================================
         # HANDLE DTSHCODE
         # =================================================
