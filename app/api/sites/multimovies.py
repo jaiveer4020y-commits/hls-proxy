@@ -251,8 +251,8 @@ def real_extract(url, request):
             # =============================================
 
             streamp2p_url = (
-                embed_urls.get("StreamP2p")
-                or embed_urls.get("streamp2p")
+                embed_urls.get("rpmhub")
+                or embed_urls.get("rpmhub")
             )
 
             if streamp2p_url:
