@@ -2,17 +2,14 @@ import requests
 import json
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
+from urllib.parse import urlparse
 from . import site_domains
 
 
 # Configuration
 TAG = 'rpmhub'
-default_domain = site_domains.get_domain(TAG)
 user_agent = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Mobile Safari/537.36"
-headers = {
-    'Referer': default_domain,
-    'User-Agent': user_agent
-}
+
 response_data = {
     'status': None,
     'status_code': None,
@@ -23,20 +20,31 @@ response_data = {
 }
 
 def real_extract(url, request):
-    # Fetch response
-    response = requests.get(url, headers=headers).text
-    video_id = url.split("#")[-1]
-    
+
+    # Extract domain and video_id from URL
+    # URL format: https://multimovies.rpmhub.site/#965unp
+    parsed = urlparse(url)
+    domain = f"{parsed.scheme}://{parsed.netloc}"
+    video_id = parsed.fragment  # part after #
+
+    headers = {
+        'Referer': domain + "/",
+        'User-Agent': user_agent
+    }
+
+    # Fetch page
+    requests.get(url, headers=headers)
+
     # Get encrypted video info from API
-    api = f'{default_domain}/api/v1/video?id={video_id}'
+    api = f'{domain}/api/v1/video?id={video_id}'
     encrypted_data = requests.get(api, headers=headers).text
+
     # Decrypt Data using AES-CBC
     password = "kiemtienmua911ca"
-    iv = "1234567890oiuytr"
+    iv_str  = "1234567890oiuytr"
 
-    # Ensure key and IV are 16 bytes
     key = password.encode('utf-8')
-    iv = iv.encode('utf-8')
+    iv  = iv_str.encode('utf-8')
 
     # Convert hex to bytes
     encrypted_bytes = bytes.fromhex(encrypted_data)
@@ -51,10 +59,10 @@ def real_extract(url, request):
 
     # Extract video URL
     video_url = decrypted_data['source']
-    
-    response_data['status']= 'success'
-    response_data['status_code']= 200
-    response_data['headers'] = headers
+
+    response_data['status']      = 'success'
+    response_data['status_code'] = 200
+    response_data['headers']     = headers
     response_data['streaming_url'] = video_url
 
     return response_data
