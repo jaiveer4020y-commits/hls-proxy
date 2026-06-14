@@ -48,7 +48,7 @@ response_data = {
     'error': None,
     'tag': TAG,
     'headers': None,
-    'streaming_url': None
+    'stream_url': None
 }
 
 # Create session
