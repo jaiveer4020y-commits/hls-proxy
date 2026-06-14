@@ -1,9 +1,9 @@
 # site_domains.py
 
 SITE_DOMAINS = {
-    'multimovies': 'https://multimovies.fyi',
+    'multimovies': 'https://multimovies.makeup',
     'gdmirrorbot': 'https://streams.iqsmartgames.com',
-    'streamwish': 'https://multimoviesshg.com',
+    'streamwish': 'https://smoothpre.com',
     'streamp2p': 'https://multimovies.p2pplay.pro'
 }
 
