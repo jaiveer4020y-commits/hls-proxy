@@ -14,7 +14,7 @@ default_domain = site_domains.get_domain('streamwish')
 multimovies_domain = site_domains.get_domain('multimovies')
 initial_headers = {
     'Referer': multimovies_domain,
-    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"',
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
 }
 
 # Helper Functions
