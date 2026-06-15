@@ -60,7 +60,7 @@ def real_extract(url, request):
     print(json.dumps(decrypted_data, indent=2))
 
     # Extract video URL
-    video_url = decrypted_data['source']
+    video_url = decrypted_data['cf']
 
     response_data['status']      = 'success'
     response_data['status_code'] = 200
