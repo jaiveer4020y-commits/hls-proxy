@@ -14,7 +14,7 @@ default_domain = site_domains.get_domain('streamwish')
 multimovies_domain = site_domains.get_domain('multimovies')
 initial_headers = {
     'Referer': multimovies_domain,
-    'User-Agent': 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"',
 }
 
 # Helper Functions
@@ -27,114 +27,53 @@ def to_base_36(n):
     """Converts a number to base-36 using an iterative approach for efficiency."""
     return '' if n == 0 else to_base_36(n // 36) + "0123456789abcdefghijklmnopqrstuvwxyz"[n % 36]
 
-def get_embed_url(url):
-    """
-    Normalize embed URL — matches VidHidePro.getEmbedUrl() logic.
-    /d/ -> /v/, /download/ -> /v/, /file/ -> /v/, /f/ -> /v/, /e/ -> /e/
-    """
-    if '/d/' in url:
-        return url.replace('/d/', '/v/')
-    elif '/download/' in url:
-        return url.replace('/download/', '/v/')
-    elif '/file/' in url:
-        return url.replace('/file/', '/v/')
-    elif '/f/' in url:
-        return url.replace('/f/', '/v/')
-    return url
-
 response_data = {
     'status': None,
     'status_code': None,
     'error': None,
     'tag': TAG,
     'headers': None,
-    'stream_url': None
+    'streaming_url': None
 }
 
-# Create session
+#Create session
 session = requests.Session()
 
-qualities = ['144', '240', '360', '480', '720', '1080']
+qualities= ['144', '240', '360', '480', '720', '1080']
 
 def real_extract(url, request):
     """Extracts streaming URLs from the given video page."""
-
-    # Normalize URL before fetching
-    url = get_embed_url(url)
-
     initial_response = session.get(url, headers=initial_headers).text
-
     if "File is no longer" in initial_response:
         response_data['status'] = 'failed'
         response_data['status_code'] = 200
         response_data['error'] = 'Link Expired!'
         response_data['streaming_url'] = None
         return response_data
-
+    
     # Fetch and parse the initial response
     soup = BeautifulSoup(initial_response, 'html.parser')
-    js_code = next((
-        script.string for script in soup.find_all('script')
-        if script.string and "eval(function(p,a,c,k,e,d)" in script.string
-    ), "")
-
+    js_code = next((script.string for script in soup.find_all('script') if script.string and "eval(function(p,a,c,k,e,d)" in script.string), "")
+    
     # Extract and clean the JS code
-    encoded_packed = re.sub(
-        r"eval\(function\([^\)]*\)\{[^\}]*\}\(|.split\('\|'\)\)\)",
-        '',
-        js_code
-    )
+    encoded_packed = re.sub(r"eval\(function\([^\)]*\)\{[^\}]*\}\(|.split\('\|'\)\)\)", '', js_code)
     data = ast.literal_eval(encoded_packed)
-
+    
     # Extract values from packed data
     p, a, c, k = data[0], int(data[1]), int(data[2]), data[3].split('|')
 
-  # Unpack JS
-for i in range(c):
-    if k[c - i - 1]:
-        p = re.sub(
-            r'\b' + to_base_36(c - i - 1) + r'\b',
-            k[c - i - 1],
-            p
-        )
-
-# -------------------------
-# Extract .txt URL ONLY
-# -------------------------
-
-txt_patterns = [
-    r'https?://[^"\']+\.txt(?:\?[^"\']*)?',
-    r'https?:\\\/\\\/[^"\']+\.txt(?:\?[^"\']*)?'
-]
-
-video_url = None
-
-for pattern in txt_patterns:
-    match = re.search(pattern, p)
-    if match:
-        video_url = match.group(0)
-        break
-
-# Convert escaped URLs if needed
-if video_url:
-    video_url = video_url.replace('\\/', '/')
-
-# Fallback to hls2 only if no .txt URL found
-if not video_url:
-    hls_match = re.search(r'"hls2"\s*:\s*"([^"]+)"', p)
-    if hls_match:
-        video_url = hls_match.group(1)
-
-if not video_url:
-    response_data['status'] = 'failed'
-    response_data['status_code'] = 500
-    response_data['error'] = 'No stream URL found'
-    response_data['streaming_url'] = None
+    # Replace placeholders with corresponding values
+    for i in range(c):
+        if k[c - i - 1]:
+            p = re.sub(r'\b' + to_base_36(c - i - 1) + r'\b', k[c - i - 1], p)
+    #Get Video URL
+    video_url = re.search(r'"hls2":"([^"]+)', p).group(1)
+    
+    
+    # Prepare response
+    response_data['status']= 'success'
+    response_data['status_code']= 200
+    response_data['headers'] = initial_headers
+    response_data['streaming_url'] = video_url
+    
     return response_data
-
-response_data['status'] = 'success'
-response_data['status_code'] = 200
-response_data['headers'] = initial_headers
-response_data['streaming_url'] = video_url
-
-return response_data
