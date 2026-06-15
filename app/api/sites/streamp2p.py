@@ -56,6 +56,8 @@ def real_extract(url, request):
     # Remove padding (PKCS7)
     decrypted_json = unpad(decrypted_bytes, AES.block_size).decode('utf-8')
     decrypted_data = json.loads(decrypted_json)
+    decrypted_data = json.loads(decrypted_json)
+    print(json.dumps(decrypted_data, indent=2))
 
     # Extract video URL
     video_url = decrypted_data['source']
