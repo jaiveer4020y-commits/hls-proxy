@@ -89,18 +89,52 @@ def real_extract(url, request):
     # Extract values from packed data
     p, a, c, k = data[0], int(data[1]), int(data[2]), data[3].split('|')
 
-    # Replace placeholders with corresponding values
-    for i in range(c):
-        if k[c - i - 1]:
-            p = re.sub(r'\b' + to_base_36(c - i - 1) + r'\b', k[c - i - 1], p)
+  # Unpack JS
+for i in range(c):
+    if k[c - i - 1]:
+        p = re.sub(
+            r'\b' + to_base_36(c - i - 1) + r'\b',
+            k[c - i - 1],
+            p
+        )
 
-    # Get Video URL
-    video_url = re.search(r'"hls2":"([^"]+)', p).group(1)
+# -------------------------
+# Extract .txt URL ONLY
+# -------------------------
 
-    # Prepare response
-    response_data['status'] = 'success'
-    response_data['status_code'] = 200
-    response_data['headers'] = initial_headers
-    response_data['streaming_url'] = video_url
+txt_patterns = [
+    r'https?://[^"\']+\.txt(?:\?[^"\']*)?',
+    r'https?:\\\/\\\/[^"\']+\.txt(?:\?[^"\']*)?'
+]
 
+video_url = None
+
+for pattern in txt_patterns:
+    match = re.search(pattern, p)
+    if match:
+        video_url = match.group(0)
+        break
+
+# Convert escaped URLs if needed
+if video_url:
+    video_url = video_url.replace('\\/', '/')
+
+# Fallback to hls2 only if no .txt URL found
+if not video_url:
+    hls_match = re.search(r'"hls2"\s*:\s*"([^"]+)"', p)
+    if hls_match:
+        video_url = hls_match.group(1)
+
+if not video_url:
+    response_data['status'] = 'failed'
+    response_data['status_code'] = 500
+    response_data['error'] = 'No stream URL found'
+    response_data['streaming_url'] = None
     return response_data
+
+response_data['status'] = 'success'
+response_data['status_code'] = 200
+response_data['headers'] = initial_headers
+response_data['streaming_url'] = video_url
+
+return response_data
