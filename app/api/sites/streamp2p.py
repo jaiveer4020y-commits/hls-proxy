@@ -61,10 +61,10 @@ def real_extract(url, request):
 
     # Extract video URL
     video_url = decrypted_data['cf']
-
+    subtitles = decrypted_data['subtitle']
     response_data['status']      = 'success'
     response_data['status_code'] = 200
     response_data['headers']     = headers
     response_data['m3u8_url'] = video_url
-
+    response_data['subtitles'] = h + subtitle
     return response_data
