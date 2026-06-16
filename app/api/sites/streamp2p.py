@@ -66,5 +66,5 @@ def real_extract(url, request):
     response_data['status_code'] = 200
     response_data['headers']     = headers
     response_data['m3u8_url'] = video_url
-    response_data['subtitles'] = subtitle
+    response_data['subtitles'] = subtitles
     return response_data
