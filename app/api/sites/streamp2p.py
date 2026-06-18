@@ -63,12 +63,10 @@ def real_extract(url, request):
     def real_extract(url, request):
     video_url = decrypted_data.get('cf')
 
-    response_data = {
-        'status': 'success',
-        'status_code': 200,
-        'headers': headers,
-        'm3u8_url': video_url
-    }
+    response_data['status'] = 'success'
+    response_data['status_code'] = 200
+    response_data['headers'] = headers
+    response_data['m3u8_url'] = video_url
 
     if decrypted_data.get('subtitle'):
         response_data['subtitles'] = decrypted_data['subtitle']
