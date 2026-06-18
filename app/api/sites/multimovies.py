@@ -258,7 +258,7 @@ def real_extract(url, request):
                 p2p_url = embed_urls.get(p2p_key)
                 if p2p_url:
                     # Unwrap plyr wrapper if present
-                    if "plyr.technocosmos.surf/hlsplayer?url=" in p2p_url:
+                    if "https://plyr.technocosmos.surf/hlsplayer?url=" in p2p_url:
                         p2p_url = p2p_url.split("?url=")[-1]
                     try:
                         sp2p_res = streamp2p.real_extract(
