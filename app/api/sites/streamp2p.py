@@ -61,7 +61,7 @@ def real_extract(url, request):
 
     # Extract video URL
     def real_extract(url, request):
-    video_url = decrypted_data.get('cf')
+    video_url = decrypted_data['cf']
 
     response_data['status'] = 'success'
     response_data['status_code'] = 200
