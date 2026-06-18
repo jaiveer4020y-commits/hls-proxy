@@ -60,14 +60,12 @@ def real_extract(url, request):
     print(json.dumps(decrypted_data, indent=2))
 
     # Extract video URL
-    video_url = decrypted_data['cf']
+    video_url = decrypted_data.get('cf')
 
 response_data['status'] = 'success'
 response_data['status_code'] = 200
 response_data['headers'] = headers
 response_data['m3u8_url'] = video_url
-
-if 'subtitle' in decrypted_data:
-    response_data['subtitles'] = decrypted_data['subtitle']
+response_data['subtitles'] = decrypted_data.get('subtitle', {})
 
 return response_data
