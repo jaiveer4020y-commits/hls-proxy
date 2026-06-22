@@ -1,7 +1,7 @@
 from django.http import HttpResponse
 
 def home(request):
-    html_content = """
+    html_content = r"""
    <html lang="en" __gcrremoteframetoken="d0db1bb5f175ac516ebffb377a75e1c3"><head>
     <meta http-equiv="Accept-CH" content="Viewport-Width, Width">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, shrink-to-fit=no">
