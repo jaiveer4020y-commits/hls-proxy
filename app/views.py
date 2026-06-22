@@ -923,71 +923,126 @@ function srtToVtt(srt){
 }
 
 /* =====================================================================
-   SOURCE — multimovies with hls-proxy, captures subtitle map
+   CONFIG
    ===================================================================== */
-const MULTIMOVIES_API='https://hls-proxy.vercel.app/api/?url=';
-const PROXY='';
+const TMDB_PROXY = 'https://search-proxy.bingeoutofficial.workers.dev';
+const CATALOG_API = 'https://script.google.com/macros/s/AKfycbw8pW6LI6nNDxqn1wXaPOzHN5QBaeqB12qv-J5NaNcu7IWqbsX9KJkruY_8y8wW12hv/exec';
+const CATALOG_KEY = 'e11a7debaaa4f5d25b671706ffe4d2acb56efbd4';
 
-function toSlug(s){return(s||'').toLowerCase().replace(/[^a-z0-9\s-]/g,'').trim().replace(/\s+/g,'-');}
-
-async function fetchTmdbData(type,id,season,episode){
-    try{
-        if(type==='movie'){const r=await fetch(`${TMDB_PROXY}/movie/${id}`);if(!r.ok)return null;const d=await r.json();return{title:d.title||'',year:(d.release_date||'').slice(0,4)};}
-        else{const r=await fetch(`${TMDB_PROXY}/tv/${id}`);if(!r.ok)return null;const d=await r.json();return{name:d.name||'',seasonNum:Number(season),episodeNum:Number(episode)};}
-    }catch(e){return null;}
-}
-
-async function fetchFromMultimovies(mvUrl){
-    try{
-        const r=await fetch(PROXY+MULTIMOVIES_API+encodeURIComponent(mvUrl),{cache:'no-store'});
-        if(!r.ok)return null;
-        const data=await r.json();
-        if(data.status!=='success'||!Array.isArray(data.servers)||!data.servers.length)return null;
-        const srv=data.servers.find(s=>s.result?.m3u8_url);
-        if(!srv?.result?.m3u8_url)return null;
-
-        // Capture proxy subtitles if present: { "en": "/path/en.vtt#en", ... }
-        if(srv.result.subtitles&&typeof srv.result.subtitles==='object'){
-            _proxySubtitles=srv.result.subtitles;
-            console.log('[ProxySub] Found subtitles:',_proxySubtitles);
-        }else{
-            _proxySubtitles={};
-        }
-
-        console.log('[Multimovies] Stream:',srv.result.m3u8_url);
-        return srv.result.m3u8_url;
-    }catch(e){console.warn('[Multimovies] Error:',e.message);return null;}
-}
-
-async function source_multimovies(type,id,season,episode){
-    const tmdb=await fetchTmdbData(type,id,season,episode);if(!tmdb)return null;
-    let url;
-    if(type==='movie'){const slug=toSlug(tmdb.title);if(!slug)return null;url=`https://multimovies.makeup/movie/${slug}/`;}
-    else{const slug=toSlug(tmdb.name);if(!slug)return null;url=`https://multimovies.makeup/episodes/${slug}-${parseInt(String(tmdb.seasonNum).padStart(2,'0'))}x${parseInt(String(tmdb.episodeNum).padStart(2,'0'))}/`;}
-    return fetchFromMultimovies(url);
+/* =====================================================================
+   STEP 1 — Get IMDb ID from TMDB (movies only)
+   ===================================================================== */
+async function getImdbId(tmdbId) {
+    try {
+        const r = await fetch(`${TMDB_PROXY}/movie/${tmdbId}/external_ids`);
+        if (!r.ok) return null;
+        const d = await r.json();
+        return d.imdb_id || null;
+    } catch(e) {
+        console.warn('[IMDb] fetch failed:', e.message);
+        return null;
+    }
 }
 
 /* =====================================================================
-   STREAM FETCHER — multimovies first, GitHub fallback
+   STEP 2 — Fetch fileslugs from catalog API
    ===================================================================== */
-async function fetchStream(type,id,season,episode){
-    // Priority 1: Multimovies
-    let url=await source_multimovies(type,id,season,episode);
-    if(url)return url;
+async function fetchCatalogFiles(type, imdbId, tmdbId, season, episode) {
+    try {
+        const params = type === 'movie'
+            ? { type: 'movie', imdbid: imdbId, key: CATALOG_KEY }
+            : { type: 'tv', tmdbid: tmdbId, season, epname: episode, key: CATALOG_KEY };
 
-    // Priority 2: GitHub
-    console.warn('[fetchStream] Multimovies failed, trying GitHub...');
-    _proxySubtitles={};
-    try{
-        const ghUrl=type==='movie'
-            ?`https://raw.githubusercontent.com/Watchout2025/api/refs/heads/main/hls/movie/${id}`
-            :`https://raw.githubusercontent.com/Watchout2025/api/refs/heads/main/hls/tv/${id}/S${season}.json`;
-        const ghRes=await fetch(ghUrl,{cache:'no-store'});
-        if(ghRes.ok){
-            if(type==='movie')return(await ghRes.text()).trim();
-            else{const d=await ghRes.json();return d[Number(episode)]||null;}
+        const url = CATALOG_API + '?' + new URLSearchParams(params);
+        const r = await fetch(url, { cache: 'no-store' });
+        if (!r.ok) return null;
+        const data = await r.json();
+        if (!data.success || !data.data?.length) return null;
+        console.log('[Catalog] Files:', data.data);
+        return data.data; // [{ filename, fileslug, fsize }, ...]
+    } catch(e) {
+        console.warn('[Catalog] Error:', e.message);
+        return null;
+    }
+}
+
+/* =====================================================================
+   STEP 3 — Resolve fileslug via Django API → m3u8
+   ===================================================================== */
+async function resolveFileslug(fileslug) {
+    try {
+        const r = await fetch(`/api/resolve/?fileslug=${fileslug}`, { cache: 'no-store' });
+        if (!r.ok) return null;
+        const data = await r.json();
+        if (data.status !== 'success') return null;
+
+        // Grab subtitles if present
+        const srv = data.servers?.find(s => s.result?.streaming_url || s.result?.m3u8_url);
+        if (!srv) return null;
+
+        const streamUrl = srv.result.streaming_url || srv.result.m3u8_url;
+        if (srv.result.subtitles) {
+            _proxySubtitles = srv.result.subtitles;
         }
-    }catch(e){console.warn('[GitHub fallback] failed:',e.message);}
+        console.log('[Resolve] Stream:', streamUrl);
+        return streamUrl;
+    } catch(e) {
+        console.warn('[Resolve] Error:', e.message);
+        return null;
+    }
+}
+
+/* =====================================================================
+   STEP 4 — Full catalog source
+   ===================================================================== */
+async function source_catalog(type, tmdbId, season, episode) {
+    let imdbId = null;
+
+    if (type === 'movie') {
+        imdbId = await getImdbId(tmdbId);
+        if (!imdbId) {
+            console.warn('[Catalog] Could not get IMDb ID');
+            return null;
+        }
+    }
+
+    const files = await fetchCatalogFiles(type, imdbId, tmdbId, season, episode);
+    if (!files) return null;
+
+    // Try each fileslug until one resolves
+    for (const file of files) {
+        if (!file.fileslug) continue;
+        console.log('[Catalog] Trying fileslug:', file.fileslug, file.filename);
+        const url = await resolveFileslug(file.fileslug);
+        if (url) return url;
+    }
+
+    return null;
+}
+
+/* =====================================================================
+   STREAM FETCHER — catalog first, GitHub fallback
+   ===================================================================== */
+async function fetchStream(type, id, season, episode) {
+    // Priority 1: Catalog → GDMirror → StreamWish/StreamP2P
+    console.log('[fetchStream] Trying catalog...');
+    let url = await source_catalog(type, id, season, episode);
+    if (url) return url;
+
+    // Priority 2: GitHub fallback
+    console.warn('[fetchStream] Catalog failed, trying GitHub...');
+    _proxySubtitles = {};
+    try {
+        const ghUrl = type === 'movie'
+            ? `https://raw.githubusercontent.com/Watchout2025/api/refs/heads/main/hls/movie/${id}`
+            : `https://raw.githubusercontent.com/Watchout2025/api/refs/heads/main/hls/tv/${id}/S${season}.json`;
+        const ghRes = await fetch(ghUrl, { cache: 'no-store' });
+        if (ghRes.ok) {
+            if (type === 'movie') return (await ghRes.text()).trim();
+            else { const d = await ghRes.json(); return d[Number(episode)] || null; }
+        }
+    } catch(e) { console.warn('[GitHub fallback] failed:', e.message); }
+
     return null;
 }
 
