@@ -1227,7 +1227,9 @@ window.onload=()=>{setupUIControls();resolveAndPlay();};
 
 <script src="https://cdn.jsdelivr.net/npm/eruda"></script></body><div id="eruda" style="all: initial;"></div><div class="__chobitsu-hide__" style="all: initial;"></div></html>
     """
-    return HttpResponse(html, content_type="text/html", status=503)
-    def site_paused(request):
+    return HttpResponse(html, content_type="text/html", status=200)
+
+
+def site_paused(request):
     return HttpResponse("<h1>Site is under maintenance</h1>", status=503)
 
