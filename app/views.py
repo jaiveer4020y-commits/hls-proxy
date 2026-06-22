@@ -1227,7 +1227,8 @@ window.onload=()=>{setupUIControls();resolveAndPlay();};
 
 <script src="https://cdn.jsdelivr.net/npm/eruda"></script></body><div id="eruda" style="all: initial;"></div><div class="__chobitsu-hide__" style="all: initial;"></div></html>
     """
-    return HttpResponse(html, content_type="text/html", status=200)
+    return HttpResponse(html_content, content_type="text/html", status=200)
+
 
 
 def site_paused(request):
