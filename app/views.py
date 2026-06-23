@@ -971,24 +971,54 @@ async function fetchCatalogFiles(type, imdbId, tmdbId, season, episode) {
 /* =====================================================================
    STEP 3 — Resolve fileslug via Django API → m3u8
    ===================================================================== */
+/* =====================================================================
+   STEP 3 — Resolve fileslug via embedhelper proxy
+   ===================================================================== */
 async function resolveFileslug(fileslug) {
     try {
-        const r = await fetch(`/api/resolve/?fileslug=${fileslug}`, { cache: 'no-store' });
+        const params = new URLSearchParams({
+            type: 'post',
+            post_sid: fileslug,
+            url: 'https://pro.iqsmartgames.com/embedhelper.php'
+        });
+
+        const r = await fetch(`${PROXY_API}?${params}`, {
+            method: 'GET',
+            cache: 'no-store',
+            headers: {
+                "Accept": (
+        "text/html,application/xhtml+xml,"
+        "application/xml;q=0.9,image/avif,"
+        "image/webp,image/apng,*/*;q=0.8"
+    ),
+    "Accept-Encoding": "gzip, deflate, br",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "DNT": "1",
+    "Pragma": "no-cache",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/116.0.0.0 Safari/537.36"
+    ),
+            }
+        });
+
         if (!r.ok) return null;
+
         const data = await r.json();
-        if (data.status !== 'success') return null;
 
-        // Grab subtitles if present
-        const srv = data.servers?.find(s => s.result?.streaming_url || s.result?.m3u8_url);
-        if (!srv) return null;
+        console.log('[Resolve] Response:', data);
 
-        const streamUrl = srv.result.streaming_url || srv.result.m3u8_url;
-        if (srv.result.subtitles) {
-            _proxySubtitles = srv.result.subtitles;
-        }
-        console.log('[Resolve] Stream:', streamUrl);
-        return streamUrl;
-    } catch(e) {
+        return data;
+
+    } catch (e) {
         console.warn('[Resolve] Error:', e.message);
         return null;
     }
