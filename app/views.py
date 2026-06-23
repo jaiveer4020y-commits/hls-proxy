@@ -922,7 +922,7 @@ function srtToVtt(srt){
     vtt+=body.replace(/(\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3})/g,'$1 line:85% position:50% align:center');
     return vtt;
 }
-}
+
 
 /* =====================================================================
    CONFIG
