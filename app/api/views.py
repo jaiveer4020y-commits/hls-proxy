@@ -13,7 +13,7 @@ def resolve_fileslug(request):
     if not fileslug:
         return JsonResponse({'status': 'error', 'error': 'fileslug required'}, status=400)
 
-   gd = gdmirrorbot.real_extract(request, fileslug)
+    gd = gdmirrorbot.real_extract(request, fileslug)
     if gd.get('status') == 'error':
         return JsonResponse({'status': 'error', 'error': gd['error']}, status=502)
 
