@@ -979,10 +979,10 @@ async function resolveFileslug(fileslug) {
         const params = new URLSearchParams({
             type: 'post',
             post_sid: fileslug,
-            url: 'https://pro.iqsmartgames.com/embedhelper.php'
+            
         });
 
-        const r = await fetch(`${PROXY_API}?${params}`, {
+        const r = await fetch(`https://pro.iqsmartgames.com/embedhelper.php`, {
             method: 'GET',
             cache: 'no-store',
             headers: {
