@@ -927,7 +927,7 @@ function srtToVtt(srt){
 /* =====================================================================
    CONFIG
    ===================================================================== */
-
+const PROXY_API = 'https://script.google.com/macros/s/AKfycbw8pW6LI6nNDxqn1wXaPOzHN5QBaeqB12qv-J5NaNcu7IWqbsX9KJkruY_8y8wW12hv/exec';
 const CATALOG_API = 'https://script.google.com/macros/s/AKfycbw8pW6LI6nNDxqn1wXaPOzHN5QBaeqB12qv-J5NaNcu7IWqbsX9KJkruY_8y8wW12hv/exec';
 const CATALOG_KEY = 'e11a7debaaa4f5d25b671706ffe4d2acb56efbd4';
 
