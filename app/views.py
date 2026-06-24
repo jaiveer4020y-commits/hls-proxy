@@ -974,33 +974,18 @@ async function fetchCatalogFiles(type, imdbId, tmdbId, season, episode) {
 /* =====================================================================
    STEP 3 — Resolve fileslug via embedhelper proxy
    ==================================================================== */
-// ========== 1. Resolve fileslug from new Apps Script ==========
-async function resolveFileslug(fileslug) {
-  try {
-    // Construct URL: base + /exec/ + fileslug
-    const baseURL = 'https://script.google.com/macros/s/AKfycbwDoh7OIdeN44jHW7bt261yYSF3cOkYfgPVLLrmwoKIUKn99tuJR6tdU4YJIowzmg8j';
-    const url = `https://workingg.vercel.app/api/proxy?&url=https://script.google.com/macros/s/AKfycbz54yydg-bHZPUB9URu9WxcAQmtD25IV5bREsfGf-6MX4sjqlOn4sPCzeVSgLTaKMtc3Q/exec?type=post&post_sid=${encodeURIComponent(fileslug)&url=https://pro.iqsmartgames.com/embedhelper.php}`;
+from app.api.sites.gdmirrorbot import _fetch_embed_data
 
-    const response = await fetch(url, {
-      method: 'GET',
-      cache: 'no-store',
-      headers: {
+# fileslug already exists from your upper code
+data = _fetch_embed_data(fileslug)
 
-      }
-    });
+print(data)  # optional
 
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
+# use data directly
+sources = data.get("sources", {})
+mresult = data.get("mresult")
 
-    // The response matches the format you gave:
-    // { sources: { ... }, mresult: "..." }
-    console.log('[Resolve] Response:', data);
-    return data;
-  } catch (err) {
-    console.warn('[Resolve] Error:', err.message);
-    return null;
-  }
-}
+return data
 
 // ========== 2. Build iframe URLs from embed data (JS version of your Python function) ==========
 function buildIframeUrls(embedData) {
