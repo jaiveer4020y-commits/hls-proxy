@@ -979,7 +979,7 @@ async function resolveFileslug(fileslug) {
   try {
     // Construct URL: base + /exec/ + fileslug
     const baseURL = 'https://script.google.com/macros/s/AKfycbwDoh7OIdeN44jHW7bt261yYSF3cOkYfgPVLLrmwoKIUKn99tuJR6tdU4YJIowzmg8j';
-    const url = `https://workingg.vercel.app/api/proxy?&url=https://script.google.com/macros/s/AKfycbz54yydg-bHZPUB9URu9WxcAQmtD25IV5bREsfGf-6MX4sjqlOn4sPCzeVSgLTaKMtc3Q/exec?type=post&post_sid=${encodeURIComponent(fileslug)&url=https%3A%2F%2Fpro.iqsmartgames.com%2Fembedhelper.php}`;
+    const url = `https://workingg.vercel.app/api/proxy?&url=https://script.google.com/macros/s/AKfycbz54yydg-bHZPUB9URu9WxcAQmtD25IV5bREsfGf-6MX4sjqlOn4sPCzeVSgLTaKMtc3Q/exec?type=post&post_sid=${encodeURIComponent(fileslug)&url=https://pro.iqsmartgames.com/embedhelper.php}`;
 
     const response = await fetch(url, {
       method: 'GET',
