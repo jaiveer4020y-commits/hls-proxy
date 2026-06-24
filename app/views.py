@@ -978,7 +978,7 @@ async function fetchCatalogFiles(type, imdbId, tmdbId, season, episode) {
 async function resolveFileslug(fileslug) {
   try {
     // Construct URL: base + /exec/ + fileslug
-    const baseURL = 'https://script.google.com/macros/s/AKfycbyhlkidN11nqlbJzR536HVOWqYeYK7iDGfmNU_VsZKaTooCeMtL951oL6Zu_t4cxR5t';
+    const baseURL = 'https://script.google.com/macros/s/AKfycbwDoh7OIdeN44jHW7bt261yYSF3cOkYfgPVLLrmwoKIUKn99tuJR6tdU4YJIowzmg8j';
     const url = `https://workingg.vercel.app/api/proxy?&url=${baseURL}/exec/${encodeURIComponent(fileslug)}`;
 
     const response = await fetch(url, {
