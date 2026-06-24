@@ -974,59 +974,123 @@ async function fetchCatalogFiles(type, imdbId, tmdbId, season, episode) {
 /* =====================================================================
    STEP 3 — Resolve fileslug via embedhelper proxy
    ==================================================================== */
+// ========== 1. Resolve fileslug from new Apps Script ==========
 async function resolveFileslug(fileslug) {
-    try {
-        const params = new URLSearchParams({
-            type: 'post',
-            post_sid: fileslug,
-            
-        });
+  try {
+    // Construct URL: base + /exec/ + fileslug
+    const baseURL = 'https://script.google.com/macros/s/AKfycbyhlkidN11nqlbJzR536HVOWqYeYK7iDGfmNU_VsZKaTooCeMtL951oL6Zu_t4cxR5t';
+    const url = `${baseURL}/exec/${encodeURIComponent(fileslug)}`;
 
-        const r = await fetch(`https://pro.iqsmartgames.com/embedhelper.php`, {
-            method: 'GET',
-            cache: 'no-store',
-            headers: {
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    const response = await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
 
-    "Accept-Encoding": "gzip, deflate, br",
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
 
-    "Accept-Language": "en-US,en;q=0.9",
-
-    "Cache-Control": "no-cache",
-
-    "Connection": "keep-alive",
-
-    "DNT": "1",
-
-    "Pragma": "no-cache",
-
-    "Sec-Fetch-Dest": "document",
-
-    "Sec-Fetch-Mode": "navigate",
-
-    "Sec-Fetch-Site": "same-origin",
-
-    "Sec-Fetch-User": "?1",
-
-    "Upgrade-Insecure-Requests": "1",
-
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
-            }
-        });
-
-        if (!r.ok) return null;
-
-        const data = await r.json();
-
-        console.log('[Resolve] Response:', data);
-
-        return data;
-
-    } catch (e) {
-        console.warn('[Resolve] Error:', e.message);
-        return null;
-    }
+    // The response matches the format you gave:
+    // { sources: { ... }, mresult: "..." }
+    console.log('[Resolve] Response:', data);
+    return data;
+  } catch (err) {
+    console.warn('[Resolve] Error:', err.message);
+    return null;
+  }
 }
+
+// ========== 2. Build iframe URLs from embed data (JS version of your Python function) ==========
+function buildIframeUrls(embedData) {
+  const { mresult, sources } = embedData;
+
+  if (!mresult) {
+    throw new Error('mresult missing in embed data');
+  }
+
+  // Decode base64 mresult and parse JSON
+  const decoded = atob(mresult); // atob works in browser; for Node use Buffer.from(mresult, 'base64').toString()
+  let streamIds;
+  try {
+    streamIds = JSON.parse(decoded);
+  } catch {
+    throw new Error('Invalid JSON in decoded mresult');
+  }
+
+  if (!streamIds || typeof streamIds !== 'object') {
+    throw new Error('Decoded mresult is empty or invalid');
+  }
+
+  // ---------- Define provider mappings ----------
+  // Option A: Hardcode base URLs and friendly names (if static)
+  const siteUrls = {
+    upnshr: 'https://upnshr.example.com/embed/',
+    rpmshre: 'https://rpmshre.example.com/embed/',
+    strmp2: 'https://strmp2.example.com/embed/',
+    smwh: 'https://smwh.example.com/embed/',
+    flls: 'https://flls.example.com/embed/'
+  };
+
+  const friendlyNames = {
+    upnshr: 'UPNSHR',
+    rpmshre: 'RPMSHRE',
+    strmp2: 'STRMP2',
+    smwh: 'SMWH',
+    flls: 'FLLS'
+  };
+
+  // Option B: Fetch mappings from your Python endpoints (uncomment if needed)
+  /*
+  const [streamp2pMap, streamwishMap] = await Promise.all([
+    fetch('/app/api/sites/streamp2p.py').then(r => r.json()),
+    fetch('/app/api/sites/streamwish.py').then(r => r.json())
+  ]);
+  // merge mappings...
+  */
+
+  const iframeUrls = {};
+
+  for (const [providerKey, streamId] of Object.entries(streamIds)) {
+    if (!streamId) continue;
+
+    const baseUrl = siteUrls[providerKey];
+    if (!baseUrl) continue;
+
+    const providerName = friendlyNames[providerKey] || providerKey;
+    iframeUrls[providerName] = `${baseUrl}${streamId}`;
+  }
+
+  return iframeUrls;
+}
+
+// ========== 3. Usage example ==========
+(async () => {
+  const fileslug = 'your_fileslug_here'; // e.g., "abc123"
+  const embedData = await resolveFileslug(fileslug);
+
+  if (!embedData) {
+    console.error('Failed to fetch embed data');
+    return;
+  }
+
+  try {
+    const iframeUrls = buildIframeUrls(embedData);
+    console.log('Generated iframe URLs:', iframeUrls);
+
+    // Extract specific ones if needed:
+    const { UPNSHR, RPMSHRE, STRMP2, SMWH, FLLS } = iframeUrls;
+    console.log('UPNSHR:', UPNSHR);
+    console.log('RPMSHRE:', RPMSHRE);
+    console.log('STRMP2:', STRMP2);
+    console.log('SMWH:', SMWH);
+    console.log('FLLS:', FLLS);
+  } catch (err) {
+    console.error('Error building iframe URLs:', err.message);
+  }
+})();
 
 /* =====================================================================
    STEP 4 — Full catalog source
