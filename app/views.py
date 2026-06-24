@@ -979,14 +979,13 @@ async function resolveFileslug(fileslug) {
   try {
     // Construct URL: base + /exec/ + fileslug
     const baseURL = 'https://script.google.com/macros/s/AKfycbyhlkidN11nqlbJzR536HVOWqYeYK7iDGfmNU_VsZKaTooCeMtL951oL6Zu_t4cxR5t';
-    const url = `${baseURL}/exec/${encodeURIComponent(fileslug)}`;
+    const url = `https://workingg.vercel.app/api/proxy?&url=${baseURL}/exec/${encodeURIComponent(fileslug)}`;
 
     const response = await fetch(url, {
       method: 'GET',
       cache: 'no-store',
       headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+
       }
     });
 
