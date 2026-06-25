@@ -976,18 +976,29 @@ async function fetchCatalogFiles(type, imdbId, tmdbId, season, episode) {
    ==================================================================== */
 from app.api.sites.gdmirrorbot import _fetch_embed_data
 
-# fileslug already exists from your upper code
-data = _fetch_embed_data(fileslug)
+def process_fileslug(fileslug):
+    """
+    Fetches embed data for a given fileslug and returns it.
+    """
+    # 1. Fetch the data
+    data = _fetch_embed_data(fileslug)
 
-print(data)  # optional
+    # 2. Handle potential failure
+    if data is None:
+        # Return an empty dict or raise an error, depending on your needs
+        return {"error": "Failed to fetch embed data"}
 
-# use data directly
-sources = data.get("sources", {})
-mresult = data.get("mresult")
+    # 3. Optional: debug print
+    print(data)
 
-return data
+    # 4. Extract specific fields if needed (they are used later)
+    sources = data.get("sources", {})
+    mresult = data.get("mresult")
 
-// ========== 2. Build iframe URLs from embed data (JS version of your Python function) ==========
+    # 5. Return the full data
+    return data
+           
+/*========== 2. Build iframe URLs from embed data (JS version of your Python function) ==========*/
 function buildIframeUrls(embedData) {
   const { mresult, sources } = embedData;
 
