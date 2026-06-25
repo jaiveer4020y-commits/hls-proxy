@@ -977,9 +977,9 @@ async function fetchCatalogFiles(type, imdbId, tmdbId, season, episode) {
 from app.api.sites.gdmirrorbot import _fetch_embed_data
 
 def process_fileslug(fileslug):
-    """
+
     Fetches embed data for a given fileslug and returns it.
-    """
+
     # 1. Fetch the data
     data = _fetch_embed_data(fileslug)
 
