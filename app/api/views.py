@@ -4,7 +4,7 @@ from .sites import streamwish, multimovies
 # List of extractors with corresponding domains
 site_extractors = [
     (['hlsflex', 'streamwish'], streamwish),
-    (['multimovies'], multimovies)
+    (['iqsmartgames'], multimovies)
 ]
 
 def api_endpoint(request):
