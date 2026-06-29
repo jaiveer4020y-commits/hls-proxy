@@ -4,6 +4,4 @@ from . import views
 
 urlpatterns = [
     path('', views.api_endpoint, name='api_endpoint'),
-    path('resolve/', views.resolve_fileslug),
-
 ]
