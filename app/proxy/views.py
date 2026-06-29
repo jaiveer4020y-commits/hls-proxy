@@ -5,33 +5,26 @@ import time
 import m3u8
 from django.contrib.sites.shortcuts import get_current_site
 from base64 import b64decode, b64encode
+from ..api.sites import utils
 import json 
+
+HEADERS = None
 
 HOP_BY_HOP_HEADERS = {
     'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
     'te', 'trailer', 'transfer-encoding', 'upgrade'
 }
 
-# --- NEW HELPER FUNCTION ---
-def get_safe_headers(encoded_headers):
-    """Safely decode base64 headers into a dictionary."""
-    if not encoded_headers:
-        return {}
-    try:
-        decoded = safe_b64decode(encoded_headers)
-        return json.loads(decoded) if decoded else {}
-    except (json.JSONDecodeError, ValueError, TypeError):
-        return {}
-
+# Helper Functions
 def safe_b64decode(value):
     try:
-        # Some players might not send proper padding, let's fix that
-        padding = '=' * (4 - len(value) % 4)
-        return b64decode(unquote(value) + padding).decode()
+        return b64decode(unquote(value)).decode()
     except Exception:
         return unquote(value)
 
+
 def remove_hop_by_hop_headers(response):
+    """Remove hop-by-hop headers from the response."""
     for header in HOP_BY_HOP_HEADERS:
         if header in response.headers:
             del response.headers[header]
@@ -43,6 +36,7 @@ def get_domain(request):
 
 def generate_m3u8(playlist_items, is_master=False):
     m3u8_content = "#EXTM3U\n"
+
     if is_master:
         m3u8_content += "#EXT-X-VERSION:3\n"
         for item in playlist_items:
@@ -60,103 +54,143 @@ def generate_m3u8(playlist_items, is_master=False):
                 m3u8_content += f"{item['info']}\n"
             else:
                 m3u8_content += f"{item['info']}\n{item['uri']}\n"
+        
         m3u8_content += "#EXT-X-ENDLIST\n"
+
     return m3u8_content
 
 def proxy_view(request):
-    """Entry point for master and media playlists."""
+    """Entry point for master and media playlists (video & audio)."""
+    start_time = time.time()
     encoded_url = request.GET.get('url', '')
-    encoded_headers = request.GET.get('headers', '')
-    
-    # SAFE DECODING
+    headers = request.GET.get('headers', '')
     hls_url = safe_b64decode(encoded_url)
-    if not hls_url:
-        return JsonResponse({"error": "URL is required"}, status=400)
+    HEADERS = json.loads(safe_b64decode(headers))
+    print(hls_url)
     
-    HEADERS = get_safe_headers(encoded_headers)
-    
-    # Re-encode for children (keeps headers consistent)
-    safe_encoded_headers = quote(b64encode(json.dumps(HEADERS).encode()).decode())
+    # Encode for further use
+    encoded_headers = quote(b64encode(json.dumps(HEADERS).encode()).decode())
 
-    try:
-        playlist_response = requests.get(hls_url, headers=HEADERS, timeout=10)
-        playlist_response.raise_for_status()
-        m3u8_playlist = m3u8.loads(playlist_response.text)
-    except Exception as e:
-        return JsonResponse({"error": f"Failed to fetch playlist: {str(e)}"}, status=502)
+    # Fetch the M3U8 playlist
+    playlist_response = requests.get(hls_url, headers=HEADERS)
+    m3u8_playlist = m3u8.loads(playlist_response.text)
     
     playlist_items = []
     is_master = m3u8_playlist.is_variant  
 
     if is_master:
+        # Handling master playlist with multiple resolutions and audio
         for variant in m3u8_playlist.playlists:
             uri = variant.uri
             complete_url = uri if bool(urlparse(uri).netloc) else urljoin(hls_url, uri)
-            proxied_url = f"{get_domain(request)}/proxy/?headers={safe_encoded_headers}&url={quote(complete_url)}"
+            proxied_url = f"{get_domain(request)}/proxy/?headers={encoded_headers}&url={quote(complete_url)}"
             playlist_items.append({
                 'uri': proxied_url,
                 'resolution': variant.stream_info.resolution,
                 'bandwidth': variant.stream_info.bandwidth
             })
+
+        # Handling audio-only streams
         for media in m3u8_playlist.media:
             if media.type == "AUDIO":
                 complete_url = media.uri if bool(urlparse(media.uri).netloc) else urljoin(hls_url, media.uri)
-                proxied_url = f"{get_domain(request)}/proxy/?headers={safe_encoded_headers}&url={quote(complete_url)}"
-                playlist_items.append({'uri': proxied_url, 'type': 'audio'})
+                proxied_url = f"{get_domain(request)}/proxy/?headers={encoded_headers}&url={quote(complete_url)}"
+                playlist_items.append({
+                    'uri': proxied_url,
+                    'type': 'audio'
+                })
+
     else:
+        print("Playlist")
+        # Handle init segment if present
         if m3u8_playlist.segments and m3u8_playlist.segment_map:
-            init_uri = m3u8_playlist.segment_map[0].uri
-            complete_init = init_uri if bool(urlparse(init_uri).netloc) else urljoin(hls_url, init_uri)
-            proxied_init = f"{get_domain(request)}/proxy/stream/?headers={safe_encoded_headers}&ts_url={quote(complete_init)}"
-            playlist_items.append({'info': f"#EXT-X-MAP:URI=\"{proxied_init}\"", 'uri': ''})
+            init_segment_uri = m3u8_playlist.segment_map[0].uri
+            complete_init_url = init_segment_uri if bool(urlparse(init_segment_uri).netloc) else urljoin(hls_url, init_segment_uri)
+            proxied_init_url = f"{get_domain(request)}/proxy/stream/?headers={encoded_headers}&ts_url={quote(complete_init_url)}"
+            playlist_items.append({
+                'info': f"#EXT-X-MAP:URI=\"{proxied_init_url}\"",
+                'uri': ''
+            })
 
         for segment in m3u8_playlist.segments:
             complete_url = segment.uri if bool(urlparse(segment.uri).netloc) else urljoin(hls_url, segment.uri)
-            proxied_url = f"{get_domain(request)}/proxy/stream/?headers={safe_encoded_headers}&ts_url={quote(complete_url)}"
-            playlist_items.append({'info': f"#EXTINF:{segment.duration},", 'uri': proxied_url})
+            proxied_url = f"{get_domain(request)}/proxy/stream/?headers={encoded_headers}&ts_url={quote(complete_url)}"
+            playlist_items.append({
+                'info': f"#EXTINF:{segment.duration},",
+                'uri': proxied_url
+            })
 
+    # Generate playlist with updated URLs
     m3u8_content = generate_m3u8(playlist_items, is_master=is_master)
+
     response = StreamingHttpResponse(m3u8_content, content_type="application/vnd.apple.mpegurl")
     response['Access-Control-Allow-Origin'] = '*'
+    response['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+    response['Access-Control-Allow-Headers'] = 'Content-Type'
+    response['Content-Security-Policy'] = "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'"
+    
     return remove_hop_by_hop_headers(response)
 
 
+# Entry point for TS segments
 def stream_ts(request):
     ts_url = request.GET.get('ts_url')
-    encoded_headers = request.GET.get('headers', '')
-    
-    # SAFE DECODING
-    HEADERS = get_safe_headers(encoded_headers)
+    headers = request.GET.get('headers', '')
+    HEADERS = json.loads(safe_b64decode(headers))
 
     if not ts_url:
         return JsonResponse({"error": "Missing ts_url parameter"}, status=400)
 
     decoded_url = unquote(ts_url)
 
-    # Forward Range header from client (Crucial for seeking)
+    # Add Range support from client
     range_header = request.META.get('HTTP_RANGE')
     if range_header:
         HEADERS['Range'] = range_header
 
     try:
-        response = requests.get(decoded_url, stream=True, headers=HEADERS, timeout=15)
+        response = requests.get(decoded_url, stream=True, headers=HEADERS, timeout=10)
+        print(f"\nStatus Code : {response.status_code}\n")
         response.raise_for_status()
 
-        # Content-Type logic
-        content_type = response.headers.get('Content-Type', 'video/mp2t')
-        if decoded_url.endswith('.m4s'): content_type = 'video/iso.segment'
-        elif decoded_url.endswith('.mp4'): content_type = 'video/mp4'
+        # Determine correct Content-Type
+        if decoded_url.endswith('.m4s'):
+            content_type = 'video/iso.segment'
+        elif decoded_url.endswith('.mp4') or 'init' in decoded_url:
+            content_type = 'video/mp4'
+        else:
+            content_type = response.headers.get('Content-Type', 'video/mp2t')
 
-        response_headers = {k: v for k, v in response.headers.items() if k.lower() not in HOP_BY_HOP_HEADERS}
+        # Build headers
+        excluded_headers = {'content-encoding', 'transfer-encoding', 'content-type'}
+        response_headers = {
+            k: v for k, v in response.headers.items() if k.lower() not in excluded_headers
+        }
+
+        # Required streaming headers
+        if 'Content-Length' in response.headers:
+            response_headers['Content-Length'] = response.headers['Content-Length']
+        if 'Content-Range' in response.headers:
+            response_headers['Content-Range'] = response.headers['Content-Range']
+
+        # CORS + streaming headers
         response_headers['Access-Control-Allow-Origin'] = '*'
+        response_headers['Access-Control-Allow-Headers'] = 'Range'
         response_headers['Accept-Ranges'] = 'bytes'
 
-        return StreamingHttpResponse(
-            streaming_content=response.iter_content(chunk_size=8192),
+        # Prepare the response
+        streaming_response = StreamingHttpResponse(
+            streaming_content=response.iter_content(chunk_size=4096),
             content_type=content_type,
-            status=response.status_code,
+            status=206 if 'Content-Range' in response.headers else 200,
             headers=response_headers
         )
 
-    except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        return remove_hop_by_hop_headers(streaming_response)
+
+    except requests.Timeout:
+        return JsonResponse({"error": "Request timed out"}, status=504)
+    except requests.HTTPError as e:
+        return JsonResponse({"error": f"HTTP error: {e}"}, status=response.status_code)
+    except requests.RequestException as e:
+        return JsonResponse({"error": f"Request failed: {str(e)}"}, status=500)
