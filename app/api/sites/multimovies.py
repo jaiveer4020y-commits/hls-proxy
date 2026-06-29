@@ -16,9 +16,8 @@ headers = {
     "Accept-Encoding": "gzip",
 }
 
-# Page fetch + AJAX POST proxy
-FETCH_PROXY = "https://script.google.com/macros/s/AKfycbw8wVUKZjBoCb_ybTD1q-p4TclYj7PY-SlSDfpHga7Ud7AUXD3i1eZtRowjiNcgPlRDPw/exec"
-AJAX_PROXY  = "https://script.google.com/macros/s/AKfycbw8wVUKZjBoCb_ybTD1q-p4TclYj7PY-SlSDfpHga7Ud7AUXD3i1eZtRowjiNcgPlRDPw/exec"
+API_BASE = "https://streams.iqsmartgames.com/embed"
+API_KEY  = "e11a7debaaa4f5d25b671706ffe4d2acb56efbd4"
 
 session = requests.Session()
 
@@ -37,156 +36,37 @@ def real_extract(url, request):
         "debug": []
     }
 
-    if not url:
-        response_data["error"] = "No URL provided to extractor."
-        return response_data
-
     try:
 
         # =================================================
-        # Resolve domain
+        # Build API URL from request params
         # =================================================
 
-        domain = u.get_domain(url)
-        default_domain = domain
+        tmdb_id    = request.get("id")
+        media_type = request.get("type", "movie")   # "movie" or "tv"
+        season     = request.get("s")
+        episode    = request.get("e")
+
+        if not tmdb_id:
+            response_data["error"] = "No TMDB id provided in request."
+            return response_data
+
+        if media_type == "tv":
+            if not season or not episode:
+                response_data["error"] = "Season and episode required for TV."
+                return response_data
+            # https://streams.iqsmartgames.com/embed/tv/{id}/{season}/{episode}?key=...
+            api_url = f"{API_BASE}/tv/{tmdb_id}/{season}/{episode}?key={API_KEY}"
+        else:
+            # https://streams.iqsmartgames.com/embed/movie/{id}?key=...
+            api_url = f"{API_BASE}/movie/{tmdb_id}?key={API_KEY}"
 
         response_data["debug"].append({
-            "step": "resolve_domain",
+            "step": "build_api_url",
             "status": "success",
-            "default_domain": default_domain
+            "api_url": api_url
         })
 
-        # =================================================
-        # Fetch page
-        # =================================================
-
-        target_url = url.replace(domain, default_domain)
-
-        response = session.get(
-            FETCH_PROXY,
-            params={"type": "fetch", "url": target_url},
-            headers=headers,
-            timeout=20
-        )
-
-        response.raise_for_status()
-
-        response_data["debug"].append({
-            "step": "fetch_page",
-            "status": "success",
-            "target_url": target_url
-        })
-
-        # =================================================
-        # Parse HTML
-        # =================================================
-
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        player_element = soup.select_one("#player-option-1")
-
-        if not player_element:
-            player_element = soup.select_one("[data-post]")
-
-        if not player_element:
-            response_data["error"] = "Player element not found on page."
-            return response_data
-
-        response_data["debug"].append({
-            "step": "find_player",
-            "status": "success"
-        })
-
-        # =================================================
-        # Extract player data
-        # =================================================
-
-        post_id   = player_element.get("data-post")
-        data_type = player_element.get("data-type")
-        data_nume = player_element.get("data-nume")
-
-        if not all([post_id, data_type, data_nume]):
-            response_data["error"] = (
-                f"Missing data attributes: "
-                f"post={post_id}, "
-                f"type={data_type}, "
-                f"nume={data_nume}"
-            )
-            return response_data
-
-        response_data["debug"].append({
-            "step": "extract_attributes",
-            "status": "success",
-            "post": post_id,
-            "type": data_type,
-            "nume": data_nume
-        })
-
-        # =================================================
-        # AJAX POST
-        # =================================================
-
-        ajax_url = (
-            f"{default_domain.rstrip('/')}"
-            f"/wp-admin/admin-ajax.php"
-        )
-
-        post_res = session.post(
-            AJAX_PROXY,
-            data={
-                "url":    ajax_url,
-                "action": "doo_player_ajax",
-                "post":   post_id,
-                "nume":   data_nume,
-                "type":   data_type
-            },
-            headers=headers,
-            timeout=20
-        )
-
-        content_type = post_res.headers.get("Content-Type", "")
-
-        if "application/json" not in content_type:
-            response_data["error"] = (
-                "Site blocked request. "
-                f"Expected JSON but got {content_type}. "
-                f"Preview: {post_res.text[:200]}"
-            )
-            return response_data
-
-        try:
-            response_json = post_res.json()
-        except Exception:
-            response_data["error"] = "Server returned invalid JSON."
-            return response_data
-
-        response_data["debug"].append({
-            "step": "ajax_response",
-            "status": "success",
-            "response_json": response_json
-        })
-
-        if not response_json:
-            response_data["error"] = "Empty JSON response."
-            return response_data
-
-        # =================================================
-        # Get embed URL
-        # =================================================
-
-        embed_url = response_json.get("embed_url")
-
-        if not embed_url:
-            response_data["error"] = "embed_url missing in AJAX response."
-            return response_data
-
-        response_data["debug"].append({
-            "step": "embed_url",
-            "status": "success",
-            "embed_url": embed_url
-        })
-
-        media_urls = []
 
         # =================================================
         # HANDLE IFRAME
