@@ -97,25 +97,36 @@ def real_extract(url, request):
         # Parse all iframes from response
         # =================================================
 
-        soup = BeautifulSoup(api_response.text, "html.parser")
-        iframes = soup.select("iframe")
-
-        if not iframes:
-            response_data["error"] = "No iframes found in API response."
-            response_data["debug"].append({
-                "step": "parse_iframes",
-                "status": "error",
-                "raw_html": api_response.text[:500]
-            })
-            return response_data
-
-        iframe_srcs = [f["src"] for f in iframes if f.get("src")]
+        embed_data = gdmirrorbot.real_extract(api_url, request)
 
         response_data["debug"].append({
-            "step": "parse_iframes",
-            "status": "success",
-            "iframe_srcs": iframe_srcs
+            "step": "gdmirrorbot",
+            "result": embed_data
         })
+
+        if not isinstance(embed_data, dict):
+            response_data["error"] = "gdmirrorbot returned invalid response."
+            return response_data
+
+        if embed_data.get("status") == "error":
+            response_data["error"] = (
+                embed_data.get("error")
+                or "gdmirrorbot extractor failed."
+            )
+            return response_data
+
+        embed_urls = embed_data.get("embed_urls", {})
+
+        response_data["debug"].append({
+            "step": "embed_urls",
+            "embed_urls": embed_urls
+        })
+
+        iframe_srcs = [v for v in embed_urls.values() if v]
+
+        if not iframe_srcs:
+            response_data["error"] = "No embed URLs found via gdmirrorbot."
+            return response_data
 
         # =================================================
         # Run each iframe through the right extractor
