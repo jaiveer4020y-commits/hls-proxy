@@ -97,33 +97,36 @@ def real_extract(url, request):
         # Parse all iframes from response
         # =================================================
 
-        if response_json.get("type") == "iframe":
+        embed_data = gdmirrorbot.real_extract(api_url, request)
 
-            embed_data = gdmirrorbot.real_extract(embed_url, request)
+        response_data["debug"].append({
+            "step": "gdmirrorbot",
+            "result": embed_data
+        })
 
-            response_data["debug"].append({
-                "step": "gdmirrorbot",
-                "result": embed_data
-            })
+        if not isinstance(embed_data, dict):
+            response_data["error"] = "gdmirrorbot returned invalid response."
+            return response_data
 
-            if not isinstance(embed_data, dict):
-                response_data["error"] = "gdmirrorbot returned invalid response."
-                return response_data
+        if embed_data.get("status") == "error":
+            response_data["error"] = (
+                embed_data.get("error")
+                or "gdmirrorbot extractor failed."
+            )
+            return response_data
 
-            if embed_data.get("status") == "error":
-                response_data["error"] = (
-                    embed_data.get("error")
-                    or "gdmirrorbot extractor failed."
-                )
-                return response_data
+        embed_urls = embed_data.get("embed_urls", {})
 
-            embed_urls = embed_data.get("embed_urls", {})
+        response_data["debug"].append({
+            "step": "embed_urls",
+            "embed_urls": embed_urls
+        })
 
-            response_data["debug"].append({
-                "step": "embed_urls",
-                "embed_urls": embed_urls
-            })
+        iframe_srcs = [v for v in embed_urls.values() if v]
 
+        if not iframe_srcs:
+            response_data["error"] = "No embed URLs found via gdmirrorbot."
+            return response_data
 
         # =================================================
         # Run each iframe through the right extractor
