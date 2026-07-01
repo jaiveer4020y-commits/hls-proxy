@@ -1,7 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 
-from . import streamwish, gdmirrorbot, streamp2p, site_domains
+from . import streamwish, streamp2p
 from . import utils as u
 
 
@@ -39,27 +39,36 @@ def real_extract(url, request):
     try:
 
         # =================================================
-        # Build API URL from request params
+        # Case A: a full streams.iqsmartgames.com URL was
+        # passed directly as ?url=...
         # =================================================
 
-        tmdb_id    = request.get("id")
-        media_type = request.get("type", "movie")   # "movie" or "tv"
-        season     = request.get("s")
-        episode    = request.get("e")
+        if url and "streams.iqsmartgames.com" in url:
+            api_url = url
 
-        if not tmdb_id:
-            response_data["error"] = "No TMDB id provided in request."
-            return response_data
+        # =================================================
+        # Case B: build the URL from ?id=&type=&s=&e=
+        # =================================================
 
-        if media_type == "tv":
-            if not season or not episode:
-                response_data["error"] = "Season and episode required for TV."
-                return response_data
-            # https://streams.iqsmartgames.com/embed/tv/{id}/{season}/{episode}?key=...
-            api_url = f"{API_BASE}/tv/{tmdb_id}/{season}/{episode}?key={API_KEY}"
         else:
-            # https://streams.iqsmartgames.com/embed/movie/{id}?key=...
-            api_url = f"{API_BASE}/movie/{tmdb_id}?key={API_KEY}"
+            tmdb_id    = request.GET.get("id")
+            media_type = request.GET.get("type", "movie")   # "movie" or "tv"
+            season     = request.GET.get("s")
+            episode    = request.GET.get("e")
+
+            if not tmdb_id:
+                response_data["error"] = "No TMDB id provided in request."
+                return response_data
+
+            if media_type == "tv":
+                if not season or not episode:
+                    response_data["error"] = "Season and episode required for TV."
+                    return response_data
+                # https://streams.iqsmartgames.com/embed/tv/{id}/{season}/{episode}?key=...
+                api_url = f"{API_BASE}/tv/{tmdb_id}/{season}/{episode}?key={API_KEY}"
+            else:
+                # https://streams.iqsmartgames.com/embed/movie/{id}?key=...
+                api_url = f"{API_BASE}/movie/{tmdb_id}?key={API_KEY}"
 
         response_data["debug"].append({
             "step": "build_api_url",
@@ -67,143 +76,112 @@ def real_extract(url, request):
             "api_url": api_url
         })
 
+        # =================================================
+        # Fetch iframe HTML from streams API
+        # =================================================
+
+        api_response = session.get(
+            api_url,
+            headers=headers,
+            timeout=20
+        )
+
+        api_response.raise_for_status()
+
+        response_data["debug"].append({
+            "step": "fetch_streams_api",
+            "status": "success"
+        })
 
         # =================================================
-        # HANDLE IFRAME
+        # Parse all iframes from response
         # =================================================
 
-        if response_json.get("type") == "iframe":
+        soup = BeautifulSoup(api_response.text, "html.parser")
+        iframes = soup.select("iframe")
 
-            embed_data = gdmirrorbot.real_extract(embed_url, request)
-
+        if not iframes:
+            response_data["error"] = "No iframes found in API response."
             response_data["debug"].append({
-                "step": "gdmirrorbot",
-                "result": embed_data
+                "step": "parse_iframes",
+                "status": "error",
+                "raw_html": api_response.text[:500]
             })
+            return response_data
 
-            if not isinstance(embed_data, dict):
-                response_data["error"] = "gdmirrorbot returned invalid response."
-                return response_data
+        iframe_srcs = [f["src"] for f in iframes if f.get("src")]
 
-            if embed_data.get("status") == "error":
-                response_data["error"] = (
-                    embed_data.get("error")
-                    or "gdmirrorbot extractor failed."
-                )
-                return response_data
-
-            embed_urls = embed_data.get("embed_urls", {})
-
-            response_data["debug"].append({
-                "step": "embed_urls",
-                "embed_urls": embed_urls
-            })
-
-            # =============================================
-            # StreamHG / EarnVids — streamwish extractor
-            # =============================================
-
-            for sw_key in [
-                "StreamHG", "streamhg",
-                "EarnVids", "earnvids",
-                "FileMoon", "filemoon",
-                "StreamWish", "streamwish"
-            ]:
-                sw_url = embed_urls.get(sw_key)
-                if sw_url:
-                    try:
-                        sw_res = streamwish.real_extract(
-                            sw_url,
-                            request
-                        )
-                        media_urls.append({
-                            "provider": sw_key,
-                            "result": sw_res
-                        })
-                    except Exception as e:
-                        media_urls.append({
-                            "provider": sw_key,
-                            "status": "error",
-                            "error": str(e)
-                        })
-
-            # =============================================
-            # RpmShare / UpnShare — streamp2p extractor
-            # =============================================
-
-            for p2p_key in [
-                "RpmShare", "UpnShare",
-                "StreamP2p", "rpmhub"
-            ]:
-                p2p_url = embed_urls.get(p2p_key)
-                if p2p_url:
-                    # Unwrap plyr wrapper if present
-                    if "https://plyr.technocosmos.surf/hlsplayer?url=" in p2p_url:
-                        p2p_url = p2p_url.split("?url=")[-1]
-                    try:
-                        sp2p_res = streamp2p.real_extract(
-                            p2p_url,
-                            request
-                        )
-                        media_urls.append({
-                            "provider": p2p_key,
-                            "result": sp2p_res
-                        })
-                    except Exception as e:
-                        media_urls.append({
-                            "provider": p2p_key,
-                            "status": "error",
-                            "error": str(e)
-                        })
+        response_data["debug"].append({
+            "step": "parse_iframes",
+            "status": "success",
+            "iframe_srcs": iframe_srcs
+        })
 
         # =================================================
-        # HANDLE DTSHCODE
+        # Run each iframe through the right extractor
         # =================================================
 
-        elif response_json.get("type") == "dtshcode":
+        media_urls = []
 
-            sub_soup = BeautifulSoup(embed_url, "html.parser")
-            iframe = sub_soup.select_one("iframe")
+        STREAMWISH_DOMAINS = (
+            "streamwish", "filemoon", "streamhg", "earnvids"
+        )
+        STREAMP2P_DOMAINS = (
+            "rpmshare", "upnshare", "streamp2p", "rpmhub"
+        )
+        PLYR_WRAPPER = "https://plyr.technocosmos.surf/hlsplayer?url="
 
-            if iframe and iframe.get("src"):
-                try:
-                    sw_res = streamwish.real_extract(
-                        iframe["src"],
-                        request
-                    )
+        for src in iframe_srcs:
+
+            src_lower = src.lower()
+
+            # Unwrap plyr wrapper if present
+            if PLYR_WRAPPER in src:
+                src = src.split("?url=")[-1]
+                src_lower = src.lower()
+
+            try:
+                if any(d in src_lower for d in STREAMWISH_DOMAINS):
+                    result = streamwish.real_extract(src, request)
                     media_urls.append({
                         "provider": "streamwish",
-                        "result": sw_res
+                        "result": result
                     })
-                except Exception as e:
+
+                elif any(d in src_lower for d in STREAMP2P_DOMAINS):
+                    result = streamp2p.real_extract(src, request)
                     media_urls.append({
-                        "provider": "streamwish",
-                        "status": "error",
-                        "error": str(e)
+                        "provider": "streamp2p",
+                        "result": result
                     })
-            else:
-                response_data["error"] = "Could not find iframe inside dtshcode."
-                return response_data
+
+                else:
+                    media_urls.append({
+                        "provider": "unknown",
+                        "src": src,
+                        "status": "skipped"
+                    })
+
+            except Exception as e:
+                media_urls.append({
+                    "provider": src,
+                    "status": "error",
+                    "error": str(e)
+                })
 
         # =================================================
-        # NO RESULTS
+        # No playable results
         # =================================================
 
         if not media_urls:
             response_data["error"] = {
-                "message": "No playable media URLs found",
-                "embed_url": embed_url,
-                "response_json": response_json,
-                "embed_data": (
-                    embed_data
-                    if 'embed_data' in locals()
-                    else None
-                )
+                "message": "No playable media URLs found.",
+                "iframe_srcs": iframe_srcs
             }
             return response_data
 
         # =================================================
-        # SUCCESS
+        # Success
         # =================================================
 
         response_data.update({
