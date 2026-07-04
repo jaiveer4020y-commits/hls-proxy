@@ -97,7 +97,7 @@ def real_extract(url, request):
         # Parse all iframes from response
         # =================================================
 
-        if response_json.get("type") == "iframe":
+
 
             embed_data = gdmirrorbot.real_extract(embed_url, request)
 
