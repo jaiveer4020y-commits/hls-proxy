@@ -44,7 +44,7 @@ def real_extract(url, request):
         # =================================================
 
         if url and "streams.iqsmartgames.com" in url:
-            api_url = url
+            embed_url = url
 
         # =================================================
         # Case B: build the URL from ?id=&type=&s=&e=
@@ -73,7 +73,7 @@ def real_extract(url, request):
         response_data["debug"].append({
             "step": "build_api_url",
             "status": "success",
-            "embed_url": api_url
+            "embed_url": embed_url
         })
 
         # =================================================
@@ -81,7 +81,7 @@ def real_extract(url, request):
         # =================================================
 
         api_response = session.get(
-            api_url,
+            embed_url,
             headers=headers,
             timeout=20
         )
