@@ -1,7 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 
-from . import streamwish, streamp2p
+from . import streamwish, streamp2p ,gdmirrorbot
 from . import utils as u
 
 
