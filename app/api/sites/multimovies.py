@@ -96,10 +96,7 @@ def real_extract(url, request):
         # =================================================
         # Parse all iframes from response
         # =================================================
-
-
-
-            embed_data = gdmirrorbot.real_extract(embed_url, request)
+          embed_data = gdmirrorbot.real_extract(embed_url, request)
 
             response_data["debug"].append({
                 "step": "gdmirrorbot",
