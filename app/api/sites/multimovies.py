@@ -65,15 +65,15 @@ def real_extract(url, request):
                     response_data["error"] = "Season and episode required for TV."
                     return response_data
                 # https://streams.iqsmartgames.com/embed/tv/{id}/{season}/{episode}?key=...
-                api_url = f"{API_BASE}/tv/{tmdb_id}/{season}/{episode}?key={API_KEY}"
+                embed_url = f"{API_BASE}/tv/{tmdb_id}/{season}/{episode}?key={API_KEY}"
             else:
                 # https://streams.iqsmartgames.com/embed/movie/{id}?key=...
-                api_url = f"{API_BASE}/movie/{tmdb_id}?key={API_KEY}"
+                embed_url = f"{API_BASE}/movie/{tmdb_id}?key={API_KEY}"
 
         response_data["debug"].append({
             "step": "build_api_url",
             "status": "success",
-            "api_url": api_url
+            "embed_url": api_url
         })
 
         # =================================================
@@ -89,7 +89,7 @@ def real_extract(url, request):
         api_response.raise_for_status()
 
         response_data["debug"].append({
-            "step": "fetch_streams_api",
+            "step": "embed_url",
             "status": "success"
         })
 
@@ -97,36 +97,33 @@ def real_extract(url, request):
         # Parse all iframes from response
         # =================================================
 
-        embed_data = gdmirrorbot.real_extract(api_url, request)
+        if response_json.get("type") == "iframe":
 
-        response_data["debug"].append({
-            "step": "gdmirrorbot",
-            "result": embed_data
-        })
+            embed_data = gdmirrorbot.real_extract(embed_url, request)
 
-        if not isinstance(embed_data, dict):
-            response_data["error"] = "gdmirrorbot returned invalid response."
-            return response_data
+            response_data["debug"].append({
+                "step": "gdmirrorbot",
+                "result": embed_data
+            })
 
-        if embed_data.get("status") == "error":
-            response_data["error"] = (
-                embed_data.get("error")
-                or "gdmirrorbot extractor failed."
-            )
-            return response_data
+            if not isinstance(embed_data, dict):
+                response_data["error"] = "gdmirrorbot returned invalid response."
+                return response_data
 
-        embed_urls = embed_data.get("embed_urls", {})
+            if embed_data.get("status") == "error":
+                response_data["error"] = (
+                    embed_data.get("error")
+                    or "gdmirrorbot extractor failed."
+                )
+                return response_data
 
-        response_data["debug"].append({
-            "step": "embed_urls",
-            "embed_urls": embed_urls
-        })
+            embed_urls = embed_data.get("embed_urls", {})
 
-        iframe_srcs = [v for v in embed_urls.values() if v]
+            response_data["debug"].append({
+                "step": "embed_urls",
+                "embed_urls": embed_urls
+            })
 
-        if not iframe_srcs:
-            response_data["error"] = "No embed URLs found via gdmirrorbot."
-            return response_data
 
         # =================================================
         # Run each iframe through the right extractor
