@@ -125,71 +125,111 @@ def real_extract(url, request):
             })
 
 
+          # =============================================
+            # StreamHG / EarnVids — streamwish extractor
+            # =============================================
+
+            for sw_key in [
+                "StreamHG", "streamhg",
+                "EarnVids", "earnvids",
+                "FileMoon", "filemoon",
+                "StreamWish", "streamwish"
+            ]:
+                sw_url = embed_urls.get(sw_key)
+                if sw_url:
+                    try:
+                        sw_res = streamwish.real_extract(
+                            sw_url,
+                            request
+                        )
+                        media_urls.append({
+                            "provider": sw_key,
+                            "result": sw_res
+                        })
+                    except Exception as e:
+                        media_urls.append({
+                            "provider": sw_key,
+                            "status": "error",
+                            "error": str(e)
+                        })
+
+            # =============================================
+            # RpmShare / UpnShare — streamp2p extractor
+            # =============================================
+
+            for p2p_key in [
+                "RpmShare", "UpnShare",
+                "StreamP2p", "rpmhub"
+            ]:
+                p2p_url = embed_urls.get(p2p_key)
+                if p2p_url:
+                    # Unwrap plyr wrapper if present
+                    if "https://plyr.technocosmos.surf/hlsplayer?url=" in p2p_url:
+                        p2p_url = p2p_url.split("?url=")[-1]
+                    try:
+                        sp2p_res = streamp2p.real_extract(
+                            p2p_url,
+                            request
+                        )
+                        media_urls.append({
+                            "provider": p2p_key,
+                            "result": sp2p_res
+                        })
+                    except Exception as e:
+                        media_urls.append({
+                            "provider": p2p_key,
+                            "status": "error",
+                            "error": str(e)
+                        })
+
         # =================================================
-        # Run each iframe through the right extractor
+        # HANDLE DTSHCODE
         # =================================================
 
-        media_urls = []
+        elif response_json.get("type") == "dtshcode":
 
-        STREAMWISH_DOMAINS = (
-            "streamwish", "filemoon", "streamhg", "earnvids"
-        )
-        STREAMP2P_DOMAINS = (
-            "rpmshare", "upnshare", "streamp2p", "rpmhub"
-        )
-        PLYR_WRAPPER = "https://plyr.technocosmos.surf/hlsplayer?url="
+            sub_soup = BeautifulSoup(embed_url, "html.parser")
+            iframe = sub_soup.select_one("iframe")
 
-        for src in iframe_srcs:
-
-            src_lower = src.lower()
-
-            # Unwrap plyr wrapper if present
-            if PLYR_WRAPPER in src:
-                src = src.split("?url=")[-1]
-                src_lower = src.lower()
-
-            try:
-                if any(d in src_lower for d in STREAMWISH_DOMAINS):
-                    result = streamwish.real_extract(src, request)
+            if iframe and iframe.get("src"):
+                try:
+                    sw_res = streamwish.real_extract(
+                        iframe["src"],
+                        request
+                    )
                     media_urls.append({
                         "provider": "streamwish",
-                        "result": result
+                        "result": sw_res
                     })
-
-                elif any(d in src_lower for d in STREAMP2P_DOMAINS):
-                    result = streamp2p.real_extract(src, request)
+                except Exception as e:
                     media_urls.append({
-                        "provider": "streamp2p",
-                        "result": result
+                        "provider": "streamwish",
+                        "status": "error",
+                        "error": str(e)
                     })
-
-                else:
-                    media_urls.append({
-                        "provider": "unknown",
-                        "src": src,
-                        "status": "skipped"
-                    })
-
-            except Exception as e:
-                media_urls.append({
-                    "provider": src,
-                    "status": "error",
-                    "error": str(e)
-                })
+            else:
+                response_data["error"] = "Could not find iframe inside dtshcode."
+                return response_data
 
         # =================================================
-        # No playable results
+        # NO RESULTS
         # =================================================
 
         if not media_urls:
             response_data["error"] = {
-                "message": "No playable media URLs found.",
-                "iframe_srcs": iframe_srcs
+                "message": "No playable media URLs found",
+                "embed_url": embed_url,
+                "response_json": response_json,
+                "embed_data": (
+                    embed_data
+                    if 'embed_data' in locals()
+                    else None
+                )
             }
             return response_data
 
         # =================================================
-        # Success
+        # SUCCESS
         # =================================================
 
         response_data.update({
