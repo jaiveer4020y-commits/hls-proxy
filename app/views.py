@@ -10,6 +10,8 @@ def home(request):
         <title>MediaVanced Extractor</title>
         <!-- Bootstrap CDN -->
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <!-- Vercel Web Analytics -->
+        <script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>
         <style>
             body {
                 background-color: #ffffff;
@@ -98,6 +100,8 @@ def site_paused(request, *args, **kwargs):
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Site Temporarily Paused</title>
+        <!-- Vercel Web Analytics -->
+        <script defer src="https://cdn.vercel-insights.com/v1/script.js"></script>
         <style>
             body {
                 margin: 0;
