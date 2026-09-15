@@ -118,7 +118,7 @@ def real_extract(url, request):
         media_urls = []
 
         STREAMWISH_DOMAINS = (
-            "streamwish", "filemoon", "streamhg", "earnvids"
+            "streamwish", "audinifer", "hanerix", "earnvids"
         )
         STREAMP2P_DOMAINS = (
             "rpmshare", "upnshare", "streamp2p", "rpmhub"
